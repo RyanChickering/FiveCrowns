@@ -12,7 +12,9 @@ import charIO
 class Player:
     def __init__(self):
         self.hand = []
+        self.complete = False
 
+    # Prompts a player to pick between the discard pile and the mystery card
     def draw(self, game):
         print("Discard pile {0} [q]".format(game.discard))
         print("Card from deck [w]")
@@ -21,17 +23,18 @@ class Player:
         choice = charIO.getch()
         while choice not in choices:
             choice = charIO.getch
-        if choice is choices[0]:
-            self.hand.append(game.deck.draw)
+        if choice is choices[1]:
+            self.hand.append(game.deck.draw())
         else:
             self.hand.append(game.discard)
 
+    #asks the player which card to discard
     def discard(self, game):
         print(self.hand)
         choices = [x for x in range(len(self.hand))]
-        print("Select a card 1 through {0}".format(1, len(self.hand)+1))
+        print("Select a card 1 through {0}".format(len(self.hand)))
         choice = charIO.getch()
-        choice = ord(choice) - 48
+        choice = ord(choice) - 49
         while choice not in choices:
             choice = charIO.getch
         game.discard = self.hand.pop(choice)
@@ -51,14 +54,34 @@ class Player:
     # Step ?: Look for wildcards and mark them as wildcards.
     # Attempt to arrange options so that the option with the lowest points is listed first.
     def pick_sets(self):
-        return True
+        # Sorts the list numerically
+        sorted_hand = sorted(self.hand, key=lambda card: card[1])
+        curr_val = sorted_hand[0][0]
+        curr_cnt = 1
+        sets = []
+        to_add = []
+        for card in sorted_hand:
+            if card[1] is curr_val:
+                curr_cnt += 1
+                to_add.append(card)
+            else:
+                sets.append(to_add)
+                to_add = [].append(card)
+                curr_cnt = 1
+                curr_val = card[1]
+        print(sets)
 
-    def card_val(self, e):
-        return e[1]
 
     def complete_hand(self):
+        """
         for group in self.hand:
             if group.len() < 3:
                 return False
-        return True
+        """
+        print("Go out? Y or N")
+        choice = charIO.getch()
+        if choice is 'y':
+            self.complete = True
+            return True
+        return False
 

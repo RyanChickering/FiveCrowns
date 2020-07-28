@@ -40,16 +40,17 @@ class FiveCrowns:
         # deals cards, draws cards, discards cards.
         # TODO: scoring
         for round_num in range(3, 13):
+            print("{0}'s round".format(round_num))
             is_out = False
             self.deal(round_num, players)
             while not is_out:
                 for play in players:
                     play.draw(self)
                     play.discard(self)
-                    if play.complete_hand:
+                    if play.complete_hand():
                         is_out = True
             for play in players:
-                if not play.complete_hand:
+                if not play.complete:
                     play.draw(self)
                     play.discard(self)
 

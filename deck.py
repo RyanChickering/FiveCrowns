@@ -6,7 +6,7 @@ class Deck:
         suits = ["club", "spade", "diamond", "heart", "star"]
         cards = {"3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"}
         # Adds the normal 110 cards to the deck
-        self.deck = [(s, c) for s in suits for c in cards]
+        self.deck = [(s, c) for s in suits for c in cards for x in range(2)]
         # Adds the six jokers to the deck
         for j in range(6):
             self.deck.append(("J", "J"))
