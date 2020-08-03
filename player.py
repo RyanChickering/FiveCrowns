@@ -10,7 +10,9 @@ Go out (automatically?) once all cards are put into sets.
 import charIO
 
 class Player:
+
     def __init__(self):
+        self.CHAR_TO_INT = 49
         self.hand = []
         self.complete = False
 
@@ -34,7 +36,7 @@ class Player:
         choices = [x for x in range(len(self.hand))]
         print("Select a card 1 through {0}".format(len(self.hand)))
         choice = charIO.getch()
-        choice = ord(choice) - 49
+        choice = ord(choice) - self.CHAR_TO_INT
         while choice not in choices:
             choice = charIO.getch
         game.discard = self.hand.pop(choice)
@@ -55,21 +57,43 @@ class Player:
     # Attempt to arrange options so that the option with the lowest points is listed first.
     def pick_sets(self):
         # Sorts the list numerically
-        sorted_hand = sorted(self.hand, key=lambda card: card[1])
-        curr_val = sorted_hand[0][0]
+        sorted_hand = sorted(self.hand, key=lambda crd: crd[1])
+        curr_val = sorted_hand[0][1]
         curr_cnt = 1
         sets = []
+        wild_set = []
+        non_set = []
         to_add = []
+        # Creates groups of cards that have the same number.
         for card in sorted_hand:
-            if card[1] is curr_val:
+            # Checks for wildcards and adds them to a set to be distributed later
+            if card[1] is len(self.hand) or card[1] is 0:
+                wild_set.append(card)
+            elif card[1] is curr_val:
                 curr_cnt += 1
                 to_add.append(card)
             else:
-                sets.append(to_add)
-                to_add = [].append(card)
+                # Only adds things with more than a pair
+                if len(to_add) > 1:
+                    sets.append(to_add)
+                elif len(to_add) is not 0:
+                    non_set.append(to_add)
+                to_add = [card]
                 curr_cnt = 1
                 curr_val = card[1]
-        print(sets)
+        sets.append(to_add)
+        sets.sort(reverse=True, key=len)
+        score = 0
+        for group in sets:
+            if len(group) < 3:
+                if len(wild_set) > 0 and len(group) is 2:
+                    group.append(wild_set.pop())
+                else:
+                    for item in group:
+                        score += item[1]
+        for item in non_set:
+            score += item[0][1]
+        print("{0}{1}. Score:{2}".format(sets, non_set, score))
 
 
     def complete_hand(self):

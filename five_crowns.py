@@ -33,20 +33,23 @@ Go out (automatically?) once all cards are put into sets.
 
 class FiveCrowns:
     # Players is a list of players
-    def __init__(self, players):
+    def __init__(self, players, test_deck=True):
         self.deck = deck.Deck()
-        self.discard = self.deck.draw()
+        if test_deck:
+            self.deck.test_deck()
         # Meat and potatoes loop that goes through all the rounds,
         # deals cards, draws cards, discards cards.
         # TODO: scoring
-        for round_num in range(3, 13):
+        for round_num in range(7, 13):
             print("{0}'s round".format(round_num))
             is_out = False
             self.deal(round_num, players)
+            self.discard = self.deck.draw()
             while not is_out:
                 for play in players:
                     play.draw(self)
                     play.discard(self)
+                    play.pick_sets()
                     if play.complete_hand():
                         is_out = True
             for play in players:
@@ -54,12 +57,15 @@ class FiveCrowns:
                     play.draw(self)
                     play.discard(self)
 
-    def deal(self, round_num, players):
+    def deal(self, round_num, players, test_deck=True):
         # Resets the hand for the player
         for play in players:
             play.hand = []
         # Deals out new cards from the top of the deck to players
-        self.deck.__init__()
+        if test_deck:
+            self.deck.test_deck()
+        else:
+            self.deck.__init__()
         for cards in range(round_num):
             for play in players:
                 play.hand.append(self.deck.draw())
@@ -68,5 +74,5 @@ class FiveCrowns:
 if __name__ == "__main__":
     player1 = player.Player()
     player2 = player.Player()
-    FiveCrowns([player1, player2])
+    FiveCrowns([player1])
 
