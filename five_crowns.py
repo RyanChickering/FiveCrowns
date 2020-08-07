@@ -49,7 +49,6 @@ class FiveCrowns:
                 for play in players:
                     play.draw(self)
                     play.discard(self)
-                    play.pick_sets()
                     if play.complete_hand():
                         is_out = True
             for play in players:

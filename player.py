@@ -8,6 +8,7 @@ Go out (automatically?) once all cards are put into sets.
 """
 
 import charIO
+import hand_graph
 
 class Player:
 
@@ -95,17 +96,8 @@ class Player:
             score += item[0][1]
         print("{0}{1}. Score:{2}".format(sets, non_set, score))
 
-
     def complete_hand(self):
-        """
-        for group in self.hand:
-            if group.len() < 3:
-                return False
-        """
-        print("Go out? Y or N")
-        choice = charIO.getch()
-        if choice is 'y':
-            self.complete = True
-            return True
-        return False
+        graph = hand_graph.HandGraph()
+        self.complete = graph.complete_hand()
+        return self.complete
 
