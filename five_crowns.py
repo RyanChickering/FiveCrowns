@@ -1,5 +1,6 @@
 import deck
-import player
+import human
+import ai
 
 
 """
@@ -11,7 +12,7 @@ runs and sets. Recognize wild cards. Players need to be able to discard. What fu
 in the game class versus the player class. Game needs to be able to recognize legitimate hands that can go out
 
 Method summary:
-Init initalizes the game, with how many players. Each player needs a list to keep track of the cards 
+Init initializes the game, with how many players. Each player needs a list to keep track of the cards 
 currently in their hand
 
 Main game running needs to:
@@ -35,6 +36,7 @@ class FiveCrowns:
     # Players is a list of players
     def __init__(self, players, test_deck=True):
         self.deck = deck.Deck()
+        self.round = 0
         if test_deck:
             self.deck.test_deck()
         # Meat and potatoes loop that goes through all the rounds,
@@ -51,6 +53,7 @@ class FiveCrowns:
                     play.discard(self)
                     if play.complete_hand():
                         is_out = True
+                self.round += 1
             for play in players:
                 if not play.complete:
                     play.draw(self)
@@ -71,7 +74,7 @@ class FiveCrowns:
 
 
 if __name__ == "__main__":
-    player1 = player.Player()
-    player2 = player.Player()
+    player1 = human.Player()
+    player2 = ai.Player()
     FiveCrowns([player1])
 
