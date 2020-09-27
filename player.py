@@ -22,6 +22,6 @@ class Player:
 
     def complete_hand(self):
         graph = hand_graph.HandGraph()
-        self.complete = graph.complete_hand()
+        self.complete = graph.complete_hand(self.hand)
         return self.complete
 
