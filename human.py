@@ -1,5 +1,4 @@
 import player
-import charIO
 
 
 class Player(player.Player):
@@ -14,9 +13,9 @@ class Player(player.Player):
         print("Card from deck [w]")
         print(self.hand)
         choices = ['q', 'w']
-        choice = charIO.getch()
+        choice = input("enter a card number")
         while choice not in choices:
-            choice = charIO.getch
+            choice = input("enter a  valid card number")
         if choice is choices[1]:
             self.hand.append(game.deck.draw())
         else:
@@ -36,7 +35,7 @@ class Player(player.Player):
     # Looking at the cards in the hand, split them into groups that can go
     # together. present the different groupings as options to be picked.
     # To start, a hand looks like
-    # [("spade", "6"), ("heart", "5"), ("heart", "6"), ("diamond", "K"), ("star", "4"), ("J", "J"), ("star", "3")]
+    # [("spade", "6"), ("heart", "5"), ("heart", "6"), ("diamond", "Ke"), ("star", "4"), ("J", "J"), ("star", "3")]
     # This hand could be grouped in a few different ways
     # [[("spade", "6"), ("heart", "6"), ("J", "J")], [("star", "4"), ("star", "3")], [("heart", "5")],  [("diamond", "K")]]
     # [[("heart", "5"), ("heart", "6"), ("J", "J")], [("star", "4"), ("star", "3")], [("spade", "6")],  [("diamond", "K")]]

@@ -34,6 +34,7 @@ class Node:
 VAL_IDX = 1
 SUIT_IDX = 0
 COST_VAL = 1
+DECK_IDX = 2
 SET_VAL = -2
 WILD_VAL = -1
 SET = 0
@@ -55,7 +56,7 @@ class HandGraph:
     # Look for every path that goes through at least three nodes and has either a cost of 0
     # or a cost of < -2
 
-    def find_edges(self, hand):
+    def find_edges(self, hand, drawn=False):
         self.hand = hand
         # Turn all of the cards into nodes
         for card in hand:
@@ -66,9 +67,15 @@ class HandGraph:
         for node in self.nodes:
             for check in self.nodes:
                 # Check for self
-                if check.name[VAL_IDX] is node.name[VAL_IDX] and check.name[SUIT_IDX] is node.name[SUIT_IDX]:
+                if check.name[VAL_IDX] is node.name[VAL_IDX] and check.name[SUIT_IDX] is node.name[SUIT_IDX] \
+                        and node.name[DECK_IDX] is node.name[DECK_IDX]:
                     val = 1
                 # Check for wildcard
+                # If we are looking for edges on a hand that has just drawn, they have an extra card so wildcard is 1
+                # less than the length of their hand.
+                if drawn:
+                    if check.name[VAL_IDX] is len(hand)-1:
+                        node.edges.append((check, WILD_VAL))
                 elif check.name[VAL_IDX] is len(hand):
                     node.edges.append((check, WILD_VAL))
                 # Check for the same number
@@ -125,7 +132,9 @@ class HandGraph:
         return True
 
     # Generates the largest valid subgraph that it can for the node using the remaining nodes.
-    def sub_graph(self, node, free_nodes, path=Path()):
+    # Node indicates the card to start the path from. Free_nodes indicates the nodes available to use in the set.
+    # path indicates the currently progressing path. Allow_any indicates whether the path cost needs to be valid or not
+    def sub_graph(self, node, free_nodes, path=Path(), allow_any=False):
         path.nodes.append(node)
         neighbors = node.edges
         possibles = []
@@ -154,14 +163,14 @@ class HandGraph:
         # While there are neighbors, go to that and try to keep going
         while len(possibles) > 0:
             curr_edge = possibles.pop()
-            if curr_edge[COST_VAL] < len(wildcards):
+            if curr_edge[COST_VAL] < len(wildcards) or allow_any:
                 if path.type is NO_TYPE:
                     if curr_edge[COST_VAL] < -1:
                         path.type = SET
                     elif curr_edge[COST_VAL] >= 0:
                         path.type = RUN
                 path.cost += curr_edge[COST_VAL]
-                new_path = self.sub_graph(curr_edge[NODE], free_nodes, path)
+                new_path = self.sub_graph(curr_edge[NODE], free_nodes, path, allow_any)
                 if len(new_path.nodes) > len(path.nodes):
                     path = new_path
         if len(path.nodes) < 3:
@@ -171,8 +180,8 @@ class HandGraph:
 
 
 if __name__ == "__main__":
-    test_hand = [("club", 13), ("star", 13), ("heart", 10), ("J", 0), ("star", 10), ("club", 12), ("heart", 12),
-                 ("diamond", 12), ("star", 12), ("club", 7)]
+    test_hand = [("c", 13, 0), ("r", 13, 0), ("h", 10, 0), ("J", 0, 0), ("h", 10, 1), ("c", 12, 0), ("h", 12, 0),
+                 ("d", 12, 0), ("r", 12, 0), ("c", 7, 0)]
     graph = HandGraph()
 
     print(graph.complete_hand(test_hand))
