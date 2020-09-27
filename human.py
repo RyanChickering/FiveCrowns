@@ -13,9 +13,9 @@ class Player(player.Player):
         print("Card from deck [w]")
         print(self.hand)
         choices = ['q', 'w']
-        choice = input("enter a card number")
+        choice = input("deck (q) pile (w)")
         while choice not in choices:
-            choice = input("enter a  valid card number")
+            choice = input("deck (q) pile (w)")
         if choice is choices[1]:
             self.hand.append(game.deck.draw())
         else:
@@ -26,10 +26,10 @@ class Player(player.Player):
         print(self.hand)
         choices = [x for x in range(len(self.hand))]
         print("Select a card 1 through {0}".format(len(self.hand)))
-        choice = charIO.getch()
+        choice = input("enter a card number")
         choice = ord(choice) - self.CHAR_TO_INT
         while choice not in choices:
-            choice = charIO.getch
+            choice = input("enter a valid card number")
         game.discard = self.hand.pop(choice)
 
     # Looking at the cards in the hand, split them into groups that can go
