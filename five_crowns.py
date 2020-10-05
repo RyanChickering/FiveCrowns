@@ -1,6 +1,9 @@
 import deck
 import human
 import ai
+import RandAI
+import random
+import hand_graph
 
 
 """
@@ -37,25 +40,31 @@ class FiveCrowns:
     def __init__(self, players, test_deck=True):
         self.deck = deck.Deck()
         self.round = 0
+
         if test_deck:
             self.deck.test_deck()
         # Meat and potatoes loop that goes through all the rounds,
         # deals cards, draws cards, discards cards.
         # TODO: scoring
-        for round_num in range(7, 13):
+        for round_num in range(3, 14):
             print("{0}'s round".format(round_num))
             is_out = False
-            self.deal(round_num, players)
-            self.discard = self.deck.draw()
+            self.deal(round_num, players, test_deck)
+            self.discardPile = [self.deck.draw()]
             while not is_out:
                 for play in players:
+                    if self.deck.isEmpty():
+                        self.deck = deck.Deck(random.shuffle(self.discardPile))
                     play.draw(self)
-                    play.discard(self)
+                    self.discardPile.append(play.discard(self))
                     if play.complete_hand():
                         is_out = True
+                        print(play.hand)
                 self.round += 1
             for play in players:
                 if not play.complete:
+                    if self.deck.isEmpty():
+                        self.deck = deck.Deck(random.shuffle(self.deck.discardPile))
                     play.draw(self)
                     play.discard(self)
 
@@ -74,7 +83,7 @@ class FiveCrowns:
 
 
 if __name__ == "__main__":
-    player1 = human.Player()
-    player2 = ai.Player()
-    FiveCrowns([player1])
+    player1 = RandAI.Player()
+    player2 = RandAI.Player()
+    FiveCrowns([player1], test_deck=False)
 

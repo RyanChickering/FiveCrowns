@@ -21,6 +21,28 @@ class Path:
             output += " type: no type"
         return output
 
+    def copy(self):
+        new_path = Path()
+        new_path.type = self.type
+        new_path.cost = self.cost
+        new_path.nodes = self.nodes.copy()
+        return new_path
+
+    # Fixes runs to have the proper cost
+    def fix(self, wild):
+        if self.type is RUN:
+            self.nodes.sort(reverse=False, key=lambda edg: edg.name[VAL_IDX])
+        curr = self.nodes[0].name[VAL_IDX]
+        self.cost = 0
+        for node in self.nodes:
+            if node.name[VAL_IDX] == wild or node.name[SUIT_IDX] == 'J':
+                self.cost -= 1
+            else:
+                self.cost += node.name[COST_VAL] - curr - 1
+
+    def fix_func(self, node):
+        return node.name[VAL_IDX]
+
 
 class Node:
     def __init__(self, name=""):
@@ -55,6 +77,7 @@ class HandGraph:
     # cannot bring in non-negative edges.
     # Look for every path that goes through at least three nodes and has either a cost of 0
     # or a cost of < -2
+    # An edge is a tuple consisting of a node and a cost
 
     def find_edges(self, hand, drawn=False):
         self.hand = hand
@@ -65,18 +88,27 @@ class HandGraph:
 
         # For each card, check what cards it can connect to
         for node in self.nodes:
+            wild = False
+            if (node.name[VAL_IDX] is len(hand) - 1 and drawn) or (node.name[VAL_IDX] is len(hand) and not drawn)\
+                    or node.name[SUIT_IDX] == 'J':
+                wild = True
             for check in self.nodes:
                 # Check for self
                 if check.name[VAL_IDX] is node.name[VAL_IDX] and check.name[SUIT_IDX] is node.name[SUIT_IDX] \
-                        and node.name[DECK_IDX] is node.name[DECK_IDX]:
+                        and node.name[DECK_IDX] is check.name[DECK_IDX]:
                     val = 1
+                # If the current card is wild, add all the nodes as neighbors
+                elif wild:
+                    val = 2
                 # Check for wildcard
                 # If we are looking for edges on a hand that has just drawn, they have an extra card so wildcard is 1
                 # less than the length of their hand.
-                if drawn:
+                elif drawn:
                     if check.name[VAL_IDX] is len(hand)-1:
                         node.edges.append((check, WILD_VAL))
                 elif check.name[VAL_IDX] is len(hand):
+                    node.edges.append((check, WILD_VAL))
+                elif check.name[SUIT_IDX] is "J":
                     node.edges.append((check, WILD_VAL))
                 # Check for the same number
                 elif node.name[VAL_IDX] is check.name[VAL_IDX]:
@@ -102,6 +134,7 @@ class HandGraph:
         for node in self.nodes:
             unused_nodes.append(node)
         while len(unused_nodes) > 0:
+            # check if all of the unused nodes are wild cards. If they are, we can go out.
             if len(unused_nodes[0].edges) is 0:
                 return False
             else:
@@ -110,6 +143,8 @@ class HandGraph:
                 # Checks if the subgraph was valid, and if it was removes the cards used from the available pile
                 if len(new_sub_graph.nodes) >= 3:
                     for sg_node in new_sub_graph.nodes:
+                        if reserved_nodes.__contains__(sg_node):
+                            return False
                         if unused_nodes.__contains__(sg_node):
                             unused_nodes.remove(sg_node)
                 # If the path was NOT valid, check conditions to see if a valid path could be made
@@ -118,7 +153,7 @@ class HandGraph:
                     if len(unused_nodes) is len(self.nodes):
                         return False
                     longest_sub_graph = self.sub_graph(unused_nodes[0], self.nodes)
-                    if len(longest_sub_graph) < 3:
+                    if len(longest_sub_graph.nodes) < 3:
                         return False
                     # If a valid path COULD be made, reserve those nodes and try again.
                     else:
@@ -134,7 +169,9 @@ class HandGraph:
     # Generates the largest valid subgraph that it can for the node using the remaining nodes.
     # Node indicates the card to start the path from. Free_nodes indicates the nodes available to use in the set.
     # path indicates the currently progressing path. Allow_any indicates whether the path cost needs to be valid or not
-    def sub_graph(self, node, free_nodes, path=Path(), allow_any=False):
+    def sub_graph(self, node, free_nodes, path=None, allow_any=False):
+        if path is None:
+            path = Path()
         path.nodes.append(node)
         neighbors = node.edges
         possibles = []
@@ -163,14 +200,20 @@ class HandGraph:
         # While there are neighbors, go to that and try to keep going
         while len(possibles) > 0:
             curr_edge = possibles.pop()
-            if curr_edge[COST_VAL] < len(wildcards) or allow_any:
+            if curr_edge[COST_VAL] + path.cost < len(wildcards) or allow_any:
                 if path.type is NO_TYPE:
                     if curr_edge[COST_VAL] < -1:
                         path.type = SET
                     elif curr_edge[COST_VAL] >= 0:
                         path.type = RUN
+                elif path.type is SET:
+                    if not curr_edge[COST_VAL] < -1:
+                        break
+                elif path.type is RUN:
+                    if not curr_edge[COST_VAL] > 0:
+                        break
                 path.cost += curr_edge[COST_VAL]
-                new_path = self.sub_graph(curr_edge[NODE], free_nodes, path, allow_any)
+                new_path = self.sub_graph(curr_edge[NODE], free_nodes, path, allow_any=allow_any)
                 if len(new_path.nodes) > len(path.nodes):
                     path = new_path
         if len(path.nodes) < 3:
@@ -178,15 +221,142 @@ class HandGraph:
                 path.add_node(wildcards.pop())
         return path
 
+    def all_combo(self, hand, draw):
+        self.find_edges(hand, drawn=draw)
+        unused_nodes = []
+        for node in self.nodes:
+            unused_nodes.append(node)
+        curr_hand = []
+        combinations = []
+        return self.all_combinations(self.nodes[0], unused_nodes, unused_nodes, curr_hand, combinations, draw=draw)
+
+    # This method returns a list of hands that have been organized into all possible arrangements including their
+    # potential scores
+    # For every node, explore every valid neighbor. Move through using only unused nodes.
+    # Argument explanation: node is the current card node, which is a list containing a value and a cost
+    # nodes is the list of all nodes. This is used to regain the list of all nodes when a new hand arrangement is made
+    # unused_nodes is the unused nodes for the current recursion
+    # curr_hand is a list of the paths that can be made in the current recursion
+    # combinations is a list of all the possible hands
+    # path is the current path being built. If no path is provided, it will create a new path
+    # draw indicates whether the hand currently holds an extra card
+    # How do the wild cards get stuck together?
+    def all_combinations(self, node, nodes, unused_nodes, curr_hand, combinations, path=None, draw=False):
+        if path is None:
+            path = Path()
+            path.add_node((node, 0))
+            unused_nodes.remove(node)
+        # When we run out of unused nodes, add the hand to the combinations and end
+        if len(unused_nodes) is 0:
+            curr_hand.append(path)
+            combinations.append(curr_hand)
+        else:
+            neighbors = node.edges
+            # Verify that the neighbors are valid to be added to the current path
+            new_neighbors = []
+            for neighbor in neighbors:
+                # Check that nodes are unused and are correct for the type of path
+                if unused_nodes.__contains__(neighbor[NODE]):
+                    # Sets can have other set neighbors or wild cards added
+                    if path.type is SET:
+                        if neighbor[COST_VAL] <= -1:
+                            new_neighbors.append(neighbor)
+                    # Runs can have other run neighbors or wild cards added
+                    elif path.type is RUN:
+                        if neighbor[COST_VAL] >= -1:
+                            new_neighbors.append(neighbor)
+                    # If the path doesn't have a set yet, any neighbor can be added
+                    else:
+                        new_neighbors.append(neighbor)
+            # If there are no valid neighbors, add the path to hand and start a new path in the hand
+            if len(new_neighbors) == 0:
+                curr_hand.append(path)
+                self.all_combinations(unused_nodes[0], nodes, unused_nodes, curr_hand, combinations, draw=draw)
+            # Create a new path with assumption nothing added to original card
+            if len(unused_nodes) > 0:
+                new_hand = curr_hand.copy()
+                new_hand.append(path.copy())
+                self.all_combinations(unused_nodes[0], nodes, unused_nodes.copy(), new_hand, combinations,
+                                      draw=draw)
+            # For each valid neighbor, add it to the path and explore what the hand looks like
+            for neighbor in new_neighbors:
+                path.add_node(neighbor)
+                # Add a type to the path if applicable
+                if path.type is NO_TYPE:
+                    if neighbor[COST_VAL] < -1:
+                        path.type = SET
+                    elif neighbor[COST_VAL] >= 0:
+                        path.type = RUN
+                # Remove the used node from the unused nodes
+                unused_nodes.remove(neighbor[NODE])
+                # Repeat for the new node
+                self.all_combinations(neighbor[NODE], nodes, unused_nodes.copy(),
+                                      curr_hand.copy(), combinations, path.copy(), draw)
+
+        return combinations
+
+    # Returns a score for a hand grouping.
+    # A hand if a list of paths
+    def evaluate_hand(self, hand):
+        wild = 0
+        cost = 0
+        valid = True
+        for path in hand:
+            wild += len(path.nodes)
+        for path in hand:
+            if path.type is RUN:
+                path.fix(wild)
+                if path.cost > 0:
+                    valid = False
+            elif path.type is SET:
+                if len(path.nodes) < 3:
+                    valid = False
+            else:
+                if len(path.nodes) < 3:
+                    valid = False
+            # add up the points found in non-valid groupings
+            if not valid:
+                for node in path.nodes:
+                    if node.name[VAL_IDX] == wild:
+                        cost += 25
+                    elif node.name[SUIT_IDX] == 'J':
+                        cost += 50
+                    else:
+                        cost += node.name[VAL_IDX]
+        return cost
+
 
 if __name__ == "__main__":
-    test_hand = [("c", 13, 0), ("r", 13, 0), ("h", 10, 0), ("J", 0, 0), ("h", 10, 1), ("c", 12, 0), ("h", 12, 0),
-                 ("d", 12, 0), ("r", 12, 0), ("c", 7, 0)]
+    test_hand = [('r', 5, 0), ('r', 6, 1), ('r', 7, 1), ('c', 11, 0), ('r', 11, 1), ('d', 8, 0), ('r', 8, 0),
+                 ('r', 10, 0), ('d', 9, 0), ('J', 0, 1)]
     graph = HandGraph()
 
-    print(graph.complete_hand(test_hand))
+    all_combos = graph.all_combo(test_hand, False)
+    low = 1000
+    high = 0
+    for combo in all_combos:
+        for group in combo:
+            print(group, end=' ')
+        print()
+        val = graph.evaluate_hand(combo)
+        if val < low:
+            low = val
+        if val > high:
+            high = val
+    print("Number of combinations: ", len(all_combos))
+    print("Highest scoring hand: ", high)
+    print("Lowest scoring hand: ", low)
+    """
+        
+        
+    """
 
     """
-    for group in graph.all_groups(test_hand):
-        print(group)"""
+    [('c', 7, 0), ('s', 4, 0), ('c', 6, 1), ('c', 6, 0)]
+10's round
+[('r', 5, 0), ('r', 6, 1), ('r', 7, 1), ('c', 11, 0), ('r', 11, 1), ('d', 8, 0), ('r', 8, 0), ('r', 10, 0), ('d', 9, 0), ('c', 10, 1)]
+11's round
+[('h', 3, 1), ('s', 4, 1), ('c', 10, 0), ('r', 4, 1), ('c', 9, 1), ('h', 11, 1), ('r', 3, 0), ('h', 4, 1), ('r', 11, 0), ('r', 4, 0), ('c', 12, 0)]
+12's round
+[('s', 6, 1), ('s', 7, 1), ('c', 6, 0), ('d', 8, 1), ('h', 8, 0), ('s', 7, 0), ('c', 7, 1), ('r', 12, 0), ('d', 6, 0), ('s', 7, 0), ('s', 7, 1), ('d', 6, 1)]"""
 

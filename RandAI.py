@@ -11,10 +11,10 @@ class Player(player.Player):
     def draw(self, game):
         choice = random.randint(0, 1)
         if choice is 0:
-            self.hand.append(game.deck.pop())
+            self.hand.append(game.deck.draw())
         else:
-            self.hand.append(game.discard)
+            self.hand.append(game.discardPile.pop())
 
     def discard(self, game):
         choice = random.randint(0, len(self.hand)-1)
-        game.discard = self.hand.pop(choice)
+        return self.hand.pop(choice)
