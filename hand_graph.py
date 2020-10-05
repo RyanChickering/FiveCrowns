@@ -97,9 +97,6 @@ class HandGraph:
                 if check.name[VAL_IDX] is node.name[VAL_IDX] and check.name[SUIT_IDX] is node.name[SUIT_IDX] \
                         and node.name[DECK_IDX] is check.name[DECK_IDX]:
                     val = 1
-                # If the current card is wild, add all the nodes as neighbors
-                elif wild:
-                    val = 2
                 # Check for wildcard
                 # If we are looking for edges on a hand that has just drawn, they have an extra card so wildcard is 1
                 # less than the length of their hand.
@@ -111,10 +108,11 @@ class HandGraph:
                 elif check.name[SUIT_IDX] is "J":
                     node.edges.append((check, WILD_VAL))
                 # Check for the same number
-                elif node.name[VAL_IDX] is check.name[VAL_IDX]:
+                # Wild check so that wild cards only have edges to other wild cards
+                elif node.name[VAL_IDX] is check.name[VAL_IDX] and not wild:
                     node.edges.append((check, SET_VAL))
                 # Check for the same suit
-                elif node.name[SUIT_IDX] is check.name[SUIT_IDX]:
+                elif node.name[SUIT_IDX] is check.name[SUIT_IDX] and not wild:
                     node.edges.append((check, abs(node.name[VAL_IDX] - check.name[VAL_IDX])-1))
 
     # To check for a complete hand, try to make it so that every node in the graph belongs to a valid subgraph of size
@@ -221,11 +219,25 @@ class HandGraph:
                 path.add_node(wildcards.pop())
         return path
 
+    def wild_check(self, card, length, draw):
+        if card.name[VAL_IDX] == length and not draw:
+            return True
+        elif card.name[VAL_IDX] == length + 1 and draw:
+            return True
+        elif card.name[SUIT_IDX] == 'J':
+            return True
+        else:
+            return False
+
     def all_combo(self, hand, draw):
         self.find_edges(hand, drawn=draw)
         unused_nodes = []
+        # Semi-sorts the nodes so that all cards are looked at before the wild cards.
         for node in self.nodes:
-            unused_nodes.append(node)
+            if self.wild_check(node, len(self.nodes), draw):
+                unused_nodes.append(node)
+            else:
+                unused_nodes.insert(0, node)
         curr_hand = []
         combinations = []
         return self.all_combinations(self.nodes[0], unused_nodes, unused_nodes, curr_hand, combinations, draw=draw)
@@ -282,6 +294,7 @@ class HandGraph:
             for neighbor in new_neighbors:
                 path.add_node(neighbor)
                 # Add a type to the path if applicable
+                # Need to avoid c5 W W d8 r8 being valid
                 if path.type is NO_TYPE:
                     if neighbor[COST_VAL] < -1:
                         path.type = SET
@@ -297,14 +310,18 @@ class HandGraph:
 
     # Returns a score for a hand grouping.
     # A hand if a list of paths
-    def evaluate_hand(self, hand):
+    def evaluate_hand(self, hand, drawn=False):
         wild = 0
         cost = 0
-        valid = True
+        # Determines the wild card value
         for path in hand:
             wild += len(path.nodes)
+        if drawn:
+            wild -= 1
         for path in hand:
+            valid = True
             if path.type is RUN:
+                # fixes runs to have the correct cost
                 path.fix(wild)
                 if path.cost > 0:
                     valid = False
@@ -327,14 +344,17 @@ class HandGraph:
 
 
 if __name__ == "__main__":
-    test_hand = [('r', 5, 0), ('r', 6, 1), ('r', 7, 1), ('c', 11, 0), ('r', 11, 1), ('d', 8, 0), ('r', 8, 0),
-                 ('r', 10, 0), ('d', 9, 0), ('J', 0, 1)]
+    test_hand = [ ('c', 6, 1), ('r', 5, 0), ('s', 5, 0), ('c', 5, 0), ('d', 8, 0)]
+
+    # [('r', 5, 0), ('r', 6, 1), ('r', 7, 1), ('c', 11, 0), ('r', 11, 1), ('d', 8, 0), ('r', 8, 0), ('r', 10, 0), ('d', 9, 0), ('J', 0, 1)]
     graph = HandGraph()
 
     all_combos = graph.all_combo(test_hand, False)
     low = 1000
     high = 0
+    i = 0
     for combo in all_combos:
+        i += 1
         for group in combo:
             print(group, end=' ')
         print()
