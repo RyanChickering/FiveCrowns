@@ -24,7 +24,9 @@ class Player(player.Player):
         choice = 0
         game.discard = self.hand.pop(choice)
 
-    def most_useless_card(self):
+        # Finds the highest value card that does not have any neighbors.
+
+    def most_useless_card(self, game, draw):
         graph = hand_graph.HandGraph()
         graph.find_edges(self.hand)
         useless = []
@@ -32,7 +34,16 @@ class Player(player.Player):
             if len(node.edges) is 0:
                 useless.append(node)
         if len(useless) > 0:
-            return sorted(useless, key=lambda crd: crd[1]).pop()
+            useless.sort(key=lambda crd: crd[1])
+            pop = useless.pop()
+            # Check to make sure that the most useless card is not a wild card (wild cards only have edges to other
+            # wild cards)
+            while hand_graph.HandGraph.wild_check(pop, game.round, draw=draw):
+                pop = useless.pop()
+            if not hand_graph.HandGraph.wild_check(pop, game.round, draw=draw):
+                return pop
+            else:
+                return None
         else:
             return None
 

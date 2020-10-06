@@ -13,6 +13,7 @@ class Player:
         self.CHAR_TO_INT = 49
         self.hand = []
         self.complete = False
+        self.score = 0
 
     def draw(self, game):
         raise NotImplementedError("Subclass must implement")
@@ -20,8 +21,13 @@ class Player:
     def discard(self, game):
         raise NotImplementedError("Subclass must implement")
 
+    def hand_value(self):
+        graph = hand_graph.HandGraph()
+        return hand_graph.HandGraph.evaluate_hands(graph.all_combo(self.hand), out=True)
+
     def complete_hand(self):
         graph = hand_graph.HandGraph()
-        self.complete = graph.complete_hand(self.hand)
+        self.complete = hand_graph.HandGraph.evaluate_hands(graph.all_combo(self.hand)) == 0
         return self.complete
+
 

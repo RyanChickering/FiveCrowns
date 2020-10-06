@@ -13,7 +13,7 @@ class Player(player.Player):
         if choice is 0:
             self.hand.append(game.deck.draw())
         else:
-            self.hand.append(game.discardPile.pop())
+            self.hand.append(game.discard_pile.pop())
 
     def discard(self, game):
         choice = random.randint(0, len(self.hand)-1)

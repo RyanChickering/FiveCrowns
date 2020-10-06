@@ -32,16 +32,48 @@ class Path:
     def fix(self, wild):
         if self.type is RUN:
             self.nodes.sort(reverse=False, key=lambda edg: edg.name[VAL_IDX])
-        curr = self.nodes[0].name[VAL_IDX]
+        curr = self.nodes[0].name[VAL_IDX] - 1
         self.cost = 0
         for node in self.nodes:
             if node.name[VAL_IDX] == wild or node.name[SUIT_IDX] == 'J':
                 self.cost -= 1
             else:
                 self.cost += node.name[COST_VAL] - curr - 1
+                curr = node.name[VAL_IDX]
 
     def fix_func(self, node):
         return node.name[VAL_IDX]
+
+    def evaluate(self, wild, out=False):
+        valid = True
+        cost = 0
+        if self.type is RUN:
+            # fixes runs to have the correct cost
+            self.fix(wild)
+            if self.cost > 0:
+                valid = False
+        elif self.type is SET:
+            if len(self.nodes) < 3:
+                valid = False
+        else:
+            if len(self.nodes) < 3:
+                valid = False
+        # add up the points found in non-valid groupings
+        if not valid:
+            for node in self.nodes:
+                if node.name[VAL_IDX] == wild:
+                    if out:
+                        cost += 25
+                    else:
+                        cost += 0
+                elif node.name[SUIT_IDX] == 'J':
+                    if out:
+                        cost += 50
+                    else:
+                        cost += 0
+                else:
+                    cost += node.name[VAL_IDX]
+        return cost
 
 
 class Node:
@@ -100,9 +132,8 @@ class HandGraph:
                 # Check for wildcard
                 # If we are looking for edges on a hand that has just drawn, they have an extra card so wildcard is 1
                 # less than the length of their hand.
-                elif drawn:
-                    if check.name[VAL_IDX] is len(hand)-1:
-                        node.edges.append((check, WILD_VAL))
+                elif drawn and check.name[VAL_IDX] is len(hand)-1:
+                    node.edges.append((check, WILD_VAL))
                 elif check.name[VAL_IDX] is len(hand):
                     node.edges.append((check, WILD_VAL))
                 elif check.name[SUIT_IDX] is "J":
@@ -219,17 +250,18 @@ class HandGraph:
                 path.add_node(wildcards.pop())
         return path
 
-    def wild_check(self, card, length, draw):
+    @staticmethod
+    def wild_check(card, length, draw=False):
         if card.name[VAL_IDX] == length and not draw:
             return True
-        elif card.name[VAL_IDX] == length + 1 and draw:
+        elif card.name[VAL_IDX] == length - 1 and draw:
             return True
         elif card.name[SUIT_IDX] == 'J':
             return True
         else:
             return False
 
-    def all_combo(self, hand, draw):
+    def all_combo(self, hand, draw=False):
         self.find_edges(hand, drawn=draw)
         unused_nodes = []
         # Semi-sorts the nodes so that all cards are looked at before the wild cards.
@@ -310,7 +342,8 @@ class HandGraph:
 
     # Returns a score for a hand grouping.
     # A hand if a list of paths
-    def evaluate_hand(self, hand, drawn=False):
+    @staticmethod
+    def evaluate_hand(hand, drawn=False, out=False):
         wild = 0
         cost = 0
         # Determines the wild card value
@@ -319,32 +352,32 @@ class HandGraph:
         if drawn:
             wild -= 1
         for path in hand:
-            valid = True
-            if path.type is RUN:
-                # fixes runs to have the correct cost
-                path.fix(wild)
-                if path.cost > 0:
-                    valid = False
-            elif path.type is SET:
-                if len(path.nodes) < 3:
-                    valid = False
-            else:
-                if len(path.nodes) < 3:
-                    valid = False
-            # add up the points found in non-valid groupings
-            if not valid:
-                for node in path.nodes:
-                    if node.name[VAL_IDX] == wild:
-                        cost += 25
-                    elif node.name[SUIT_IDX] == 'J':
-                        cost += 50
-                    else:
-                        cost += node.name[VAL_IDX]
+            cost += path.evaluate(wild, out)
         return cost
+
+    @staticmethod
+    def evaluate_hands(combos, drawn=False, out=False):
+        lowest = 1000
+        for comb in combos:
+            value = HandGraph.evaluate_hand(comb, drawn=drawn, out=out)
+            if value < lowest:
+                lowest = value
+        return lowest
+
+    @staticmethod
+    def wild_check_tuple(card, length, draw=False):
+        if card[VAL_IDX] == length and not draw:
+            return True
+        elif card[VAL_IDX] == length - 1 and draw:
+            return True
+        elif card[SUIT_IDX] == 'J':
+            return True
+        else:
+            return False
 
 
 if __name__ == "__main__":
-    test_hand = [ ('c', 6, 1), ('r', 5, 0), ('s', 5, 0), ('c', 5, 0), ('d', 8, 0)]
+    test_hand = [('r', 6, 0), ('r', 5, 1), ('r', 7, 1), ('c', 11, 0), ('r', 11, 1), ('d', 8, 0), ('r', 8, 0), ('r', 10, 0), ('d', 9, 0), ('J', 0, 1), ('r', 10, 1)]
 
     # [('r', 5, 0), ('r', 6, 1), ('r', 7, 1), ('c', 11, 0), ('r', 11, 1), ('d', 8, 0), ('r', 8, 0), ('r', 10, 0), ('d', 9, 0), ('J', 0, 1)]
     graph = HandGraph()
@@ -355,9 +388,10 @@ if __name__ == "__main__":
     i = 0
     for combo in all_combos:
         i += 1
+        """
         for group in combo:
             print(group, end=' ')
-        print()
+        print()"""
         val = graph.evaluate_hand(combo)
         if val < low:
             low = val

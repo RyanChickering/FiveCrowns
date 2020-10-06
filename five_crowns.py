@@ -4,6 +4,9 @@ import ai
 import RandAI
 import random
 import hand_graph
+import reduce_ai
+import better_bogo
+import compete_ai
 
 
 """
@@ -39,34 +42,42 @@ class FiveCrowns:
     # Players is a list of players
     def __init__(self, players, test_deck=True):
         self.deck = deck.Deck()
-        self.round = 0
-
+        self.is_out = False
+        turn_count = 0
+        self.round_num = 0
         if test_deck:
             self.deck.test_deck()
         # Meat and potatoes loop that goes through all the rounds,
         # deals cards, draws cards, discards cards.
-        # TODO: scoring
-        for round_num in range(3, 14):
-            print("{0}'s round".format(round_num))
-            is_out = False
-            self.deal(round_num, players, test_deck)
-            self.discardPile = [self.deck.draw()]
-            while not is_out:
+        for self.round_num in range(3, 14):
+            print("{0}'s round".format(self.round_num))
+            self.is_out = False
+            self.deal(self.round_num, players, test_deck)
+            self.discard_pile = [self.deck.draw()]
+            rnd_turn = 0
+            while not self.is_out:
                 for play in players:
                     if self.deck.isEmpty():
-                        self.deck = deck.Deck(random.shuffle(self.discardPile))
+                        self.deck = deck.Deck(random.shuffle(self.discard_pile))
                     play.draw(self)
-                    self.discardPile.append(play.discard(self))
+                    self.discard_pile.append(play.discard(self))
                     if play.complete_hand():
-                        is_out = True
-                        print(play.hand)
-                self.round += 1
+                        self.is_out = True
+                turn_count += 1
+                rnd_turn += 1
             for play in players:
                 if not play.complete:
                     if self.deck.isEmpty():
-                        self.deck = deck.Deck(random.shuffle(self.deck.discardPile))
+                        self.deck = deck.Deck(random.shuffle(self.discard_pile))
                     play.draw(self)
-                    play.discard(self)
+                    self.discard_pile.append(play.discard(self))
+                    play.score += play.hand_value()
+            for play in players:
+                print(play.score, end="  ")
+            print("Turns: ", rnd_turn)
+        for i in range(len(players)):
+            print("Player ", i+1, " score:", players[i].score)
+        print("Average turns: ", turn_count/11)
 
     def deal(self, round_num, players, test_deck=True):
         # Resets the hand for the player
@@ -84,6 +95,8 @@ class FiveCrowns:
 
 if __name__ == "__main__":
     player1 = RandAI.Player()
-    player2 = RandAI.Player()
-    FiveCrowns([player1], test_deck=False)
+    player2 = compete_ai.Player()
+    player3 = reduce_ai.Player()
+    player4 = better_bogo.Player()
+    FiveCrowns([player2, player3], test_deck=False)
 
