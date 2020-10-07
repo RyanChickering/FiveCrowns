@@ -9,7 +9,8 @@ import hand_graph
 
 
 class Player:
-    def __init__(self):
+    def __init__(self, name):
+        self.name = name
         self.CHAR_TO_INT = 49
         self.hand = []
         self.complete = False
@@ -30,4 +31,14 @@ class Player:
         self.complete = hand_graph.HandGraph.evaluate_hands(graph.all_combo(self.hand)) == 0
         return self.complete
 
-
+    def hand_string(self):
+        out_string = ""
+        for card in self.hand:
+            out_string += "("
+            out_string += card[hand_graph.SUIT_IDX]
+            out_string += ", "
+            out_string += str(card[hand_graph.VAL_IDX])
+            out_string += ", "
+            out_string += str(card[hand_graph.DECK_IDX])
+            out_string += ") "
+        return out_string

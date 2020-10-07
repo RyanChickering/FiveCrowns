@@ -34,22 +34,33 @@ class Player(player.Player):
         graph = hand_graph.HandGraph()
         graph.find_edges(self.hand, drawn=True)
         useless = []
+        # First, look for cards that aren't related to other cards
         for node in graph.nodes:
             # If a card has no edges and is not wild, it is useless
             if len(node.edges) is 0 and not hand_graph.HandGraph.wild_check(node, game.round_num):
                 useless.append(node)
+            # Cards that are distantly related through a run are not useful if the run length is longer than
+            # the hand
             for edge in node.edges:
                 if edge[hand_graph.COST_VAL] < game.round_num:
                     break
+        # Sort the useless cards and discard the highest
         if len(useless) > 0 and useless is not None:
             useless.sort(key=lambda crd: crd.name[hand_graph.VAL_IDX])
             return self.node_in_hand(useless.pop())
         else:
+            # If useless cards were not found, get the best hand combination currently available
             needed = []
             best = self.identify_sets(needed, game)
+            solo_path = hand_graph.Node(('n', 0, 0))
             worst = 0
             worst_path = hand_graph.Path()
+            # Go through the paths in best and look for the one that currently costs the most points and get rid of
+            # cards from that.
             for path in best:
+                if len(path.nodes) == 1:
+                    if path.nodes[0].name[hand_graph.COST_VAL] > solo_path.name[hand_graph.COST_VAL]:
+                        solo_path = path.nodes[0]
                 if self.path_eval(path, game.round_num) is not 0:
                     value = path.evaluate(game.round_num)
                     if value > worst:
@@ -57,8 +68,38 @@ class Player(player.Player):
                         worst_path = path
             worst_path.nodes.sort(key=lambda crd: crd.name[hand_graph.VAL_IDX])
             if len(worst_path.nodes) > 0:
-                return self.node_in_hand(worst_path.nodes.pop())
-            return self.hand.pop(0)
+                if worst_path.nodes[0].name[hand_graph.VAL_IDX] > solo_path.name[hand_graph.COST_VAL]:
+                    return self.node_in_hand(worst_path.nodes.pop())
+            if solo_path.name[hand_graph.COST_VAL] > 0:
+                return self.node_in_hand(solo_path)
+            # If there were no non-0 cost paths and no paths of length 1, look for a path of length four that can
+            # give up a node. If you can't find that, throw out a card protecting the lowest value cards
+            for path in best:
+                if len(path.nodes) == 4:
+                    # Since all other sets go together and this is a set of 4, can pitch any card from the set and still
+                    # go out
+                    if path.type is hand_graph.SET:
+                        return self.node_in_hand(path.nodes[0])
+                    elif path.type is hand_graph.RUN:
+                        i = 0
+                        # Runs are ordered from smallest to largest, so iterate through until you find a non wild and
+                        # pitch it
+                        path.fix(game.round_num)
+                        while i < len(path.nodes) and not graph.wild_check(path.nodes[i], game.round_num):
+                            i += 1
+                        if i < len(path.nodes):
+                            return self.node_in_hand(path.nodes[i])
+            # If there were no sets of 4, need to go through all the sets and find the one with the lowest cost (if the
+            # cards counted) and then throw out the highest card in it
+            lowest = 1000
+            candidate = hand_graph.Path()
+            for path in best:
+                value = path.evaluate(game.round_num, fits_hand=False)
+                if value < lowest:
+                    lowest = value
+                    candidate = path
+            candidate.nodes.sort(key=lambda crd: crd.name[hand_graph.VAL_IDX])
+            return self.node_in_hand(candidate.nodes.pop())
 
     def node_in_hand(self, node):
         for card in self.hand:

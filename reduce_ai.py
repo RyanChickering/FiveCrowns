@@ -15,7 +15,8 @@ DECK_IDX = 2
 
 
 class Player(player.Player):
-    def __init__(self):
+    def __init__(self, name):
+        self.name = name
         self.CHAR_TO_INT = 49
         self.hand = []
         self.complete = False

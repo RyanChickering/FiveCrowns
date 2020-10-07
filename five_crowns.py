@@ -40,13 +40,15 @@ Go out (automatically?) once all cards are put into sets.
 
 class FiveCrowns:
     # Players is a list of players
-    def __init__(self, players, test_deck=True):
+    def __init__(self, players, test_deck=True, output_hands=None):
         self.deck = deck.Deck()
         self.is_out = False
         turn_count = 0
         self.round_num = 0
         if test_deck:
             self.deck.test_deck()
+        if output_hands is not None:
+            output_hands = open(output_hands, "a")
         # Meat and potatoes loop that goes through all the rounds,
         # deals cards, draws cards, discards cards.
         for self.round_num in range(3, 14):
@@ -61,10 +63,17 @@ class FiveCrowns:
                         self.deck = deck.Deck(random.shuffle(self.discard_pile))
                     play.draw(self)
                     self.discard_pile.append(play.discard(self))
+                    if output_hands is not None:
+                        output_hands.write(play.hand_string())
+                        output_hands.write(" ")
                     if play.complete_hand():
                         self.is_out = True
+                        if output_hands is not None:
+                            output_hands.write(str(play.hand_value()))
                 turn_count += 1
                 rnd_turn += 1
+                if output_hands is not None:
+                    output_hands.write("\n")
             for play in players:
                 if not play.complete:
                     if self.deck.isEmpty():
@@ -72,11 +81,18 @@ class FiveCrowns:
                     play.draw(self)
                     self.discard_pile.append(play.discard(self))
                     play.score += play.hand_value()
+                    if output_hands is not None:
+                        output_hands.write(play.hand_string())
+                        output_hands.write(" ")
+                        output_hands.write(str(play.hand_value()))
+                        output_hands.write("\n")
             for play in players:
                 print(play.score, end="  ")
             print("Turns: ", rnd_turn)
-        for i in range(len(players)):
-            print("Player ", i+1, " score:", players[i].score)
+        for play in players:
+            print(play.name, " score:", play.score)
+        if output_hands is not None:
+            output_hands.close()
         print("Average turns: ", turn_count/11)
 
     def deal(self, round_num, players, test_deck=True):
@@ -94,9 +110,9 @@ class FiveCrowns:
 
 
 if __name__ == "__main__":
-    player1 = RandAI.Player()
-    player2 = compete_ai.Player()
-    player3 = reduce_ai.Player()
-    player4 = better_bogo.Player()
-    FiveCrowns([player2, player3], test_deck=False)
+    player1 = RandAI.Player("Random")
+    player2 = compete_ai.Player("Compete")
+    player3 = reduce_ai.Player("Reduce")
+    player4 = better_bogo.Player("Better Bogo")
+    FiveCrowns([player1, player2, player3, player4], test_deck=False, output_hands="hand_output")
 

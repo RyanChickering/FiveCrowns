@@ -41,10 +41,13 @@ class Path:
                 self.cost += node.name[COST_VAL] - curr - 1
                 curr = node.name[VAL_IDX]
 
+    # Function used for ordering in the fix function
     def fix_func(self, node):
         return node.name[VAL_IDX]
 
-    def evaluate(self, wild, out=False):
+    # Evaluates the number of points in an incomplete run. Out controls whether the game is out, as wild cards should
+    # not be counted as points until the game is over
+    def evaluate(self, wild, out=False, fits_hand=True):
         valid = True
         cost = 0
         if self.type is RUN:
@@ -59,11 +62,12 @@ class Path:
             if len(self.nodes) < 3:
                 valid = False
         # add up the points found in non-valid groupings
+        valid = valid and fits_hand
         if not valid:
             for node in self.nodes:
                 if node.name[VAL_IDX] == wild:
                     if out:
-                        cost += 25
+                        cost += 20
                     else:
                         cost += 0
                 elif node.name[SUIT_IDX] == 'J':
@@ -156,6 +160,8 @@ class HandGraph:
     # If you fail with the unused nodes, try with all the nodes. If still no path exists, fail. If a path exists,
     # reserve those nodes as used and go back and try to build a new path for earlier cards not using the now reserved
     # cards. At some point, need to have an exit condition for repeated failure.
+    # This method is heavily flawed and needs to be looked into. Currently use all_combo and evaluation functions to
+    # determine when a hand has 0 points
     def complete_hand(self, hand):
         self.find_edges(hand)
         unused_nodes = []
@@ -250,6 +256,7 @@ class HandGraph:
                 path.add_node(wildcards.pop())
         return path
 
+    # Check whether the input card (a node) is wild
     @staticmethod
     def wild_check(card, length, draw=False):
         if card.name[VAL_IDX] == length and not draw:
@@ -261,6 +268,7 @@ class HandGraph:
         else:
             return False
 
+    # Creates every possible combination of cards possible for a hand
     def all_combo(self, hand, draw=False):
         self.find_edges(hand, drawn=draw)
         unused_nodes = []
@@ -274,8 +282,7 @@ class HandGraph:
         combinations = []
         return self.all_combinations(self.nodes[0], unused_nodes, unused_nodes, curr_hand, combinations, draw=draw)
 
-    # This method returns a list of hands that have been organized into all possible arrangements including their
-    # potential scores
+    # This method returns a list of hands that have been organized into all possible arrangements
     # For every node, explore every valid neighbor. Move through using only unused nodes.
     # Argument explanation: node is the current card node, which is a list containing a value and a cost
     # nodes is the list of all nodes. This is used to regain the list of all nodes when a new hand arrangement is made
@@ -284,12 +291,12 @@ class HandGraph:
     # combinations is a list of all the possible hands
     # path is the current path being built. If no path is provided, it will create a new path
     # draw indicates whether the hand currently holds an extra card
-    # How do the wild cards get stuck together?
     def all_combinations(self, node, nodes, unused_nodes, curr_hand, combinations, path=None, draw=False):
         if path is None:
             path = Path()
-            path.add_node((node, 0))
-            unused_nodes.remove(node)
+        # add the new node to the path. I don't think the cost in the path is necessary
+        path.add_node((node, 0))
+        unused_nodes.remove(node)
         # When we run out of unused nodes, add the hand to the combinations and end
         if len(unused_nodes) is 0:
             curr_hand.append(path)
@@ -324,7 +331,6 @@ class HandGraph:
                                       draw=draw)
             # For each valid neighbor, add it to the path and explore what the hand looks like
             for neighbor in new_neighbors:
-                path.add_node(neighbor)
                 # Add a type to the path if applicable
                 # Need to avoid c5 W W d8 r8 being valid
                 if path.type is NO_TYPE:
@@ -332,8 +338,6 @@ class HandGraph:
                         path.type = SET
                     elif neighbor[COST_VAL] >= 0:
                         path.type = RUN
-                # Remove the used node from the unused nodes
-                unused_nodes.remove(neighbor[NODE])
                 # Repeat for the new node
                 self.all_combinations(neighbor[NODE], nodes, unused_nodes.copy(),
                                       curr_hand.copy(), combinations, path.copy(), draw)
@@ -355,6 +359,8 @@ class HandGraph:
             cost += path.evaluate(wild, out)
         return cost
 
+    # Evaluates every combination of hands returned by all_combo and returns the lowest score possible for the current
+    # hand
     @staticmethod
     def evaluate_hands(combos, drawn=False, out=False):
         lowest = 1000
@@ -364,6 +370,7 @@ class HandGraph:
                 lowest = value
         return lowest
 
+    # Checks for wild cards but using the tuple format used by the deck
     @staticmethod
     def wild_check_tuple(card, length, draw=False):
         if card[VAL_IDX] == length and not draw:
@@ -375,23 +382,30 @@ class HandGraph:
         else:
             return False
 
-
+# Main method for testing different functions
 if __name__ == "__main__":
-    test_hand = [('r', 6, 0), ('r', 5, 1), ('r', 7, 1), ('c', 11, 0), ('r', 11, 1), ('d', 8, 0), ('r', 8, 0), ('r', 10, 0), ('d', 9, 0), ('J', 0, 1), ('r', 10, 1)]
+    test_hand = [('c', 11, 1), ('J', 0, 2), ('c', 5, 1), ('c', 10, 0)]
 
-    # [('r', 5, 0), ('r', 6, 1), ('r', 7, 1), ('c', 11, 0), ('r', 11, 1), ('d', 8, 0), ('r', 8, 0), ('r', 10, 0), ('d', 9, 0), ('J', 0, 1)]
+    # [('r', 6, 0), ('r', 5, 1), ('r', 7, 1), ('c', 11, 0), ('r', 11, 1), ('d', 8, 0), ('r', 8, 0), ('r', 10, 0), ('d', 9, 0), ('J', 0, 1), ('r', 10, 1)]
     graph = HandGraph()
+    """
+    
+    path = Path()
+    path.add_node((('J', 0, 1), -1))
+    path.add_node((('J', 0, 2), -1))
+    path.add_node((('r', 5, 1), -1))
+    print(path.evaluate(3, out=True))
 
+    """
     all_combos = graph.all_combo(test_hand, False)
     low = 1000
     high = 0
     i = 0
     for combo in all_combos:
         i += 1
-        """
         for group in combo:
             print(group, end=' ')
-        print()"""
+        print()
         val = graph.evaluate_hand(combo)
         if val < low:
             low = val
@@ -400,10 +414,8 @@ if __name__ == "__main__":
     print("Number of combinations: ", len(all_combos))
     print("Highest scoring hand: ", high)
     print("Lowest scoring hand: ", low)
-    """
         
-        
-    """
+
 
     """
     [('c', 7, 0), ('s', 4, 0), ('c', 6, 1), ('c', 6, 0)]
