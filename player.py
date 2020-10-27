@@ -32,13 +32,14 @@ class Player:
         return self.complete
 
     def hand_string(self):
-        out_string = ""
+        out_string = "["
         for card in self.hand:
-            out_string += "("
+            out_string += "('"
             out_string += card[hand_graph.SUIT_IDX]
-            out_string += ", "
+            out_string += "', "
             out_string += str(card[hand_graph.VAL_IDX])
             out_string += ", "
             out_string += str(card[hand_graph.DECK_IDX])
             out_string += ") "
+        out_string += "]"
         return out_string

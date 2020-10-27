@@ -51,7 +51,7 @@ class FiveCrowns:
             output_hands = open(output_hands, "a")
         # Meat and potatoes loop that goes through all the rounds,
         # deals cards, draws cards, discards cards.
-        for self.round_num in range(3, 14):
+        for self.round_num in range(3, 10):
             print("{0}'s round".format(self.round_num))
             self.is_out = False
             self.deal(self.round_num, players, test_deck)
@@ -66,10 +66,12 @@ class FiveCrowns:
                     if output_hands is not None:
                         output_hands.write(play.hand_string())
                         output_hands.write(" ")
+                        output_hands.write(self.card_to_string(self.discard_pile[len(self.discard_pile)-1]))
                     if play.complete_hand():
                         self.is_out = True
                         if output_hands is not None:
                             output_hands.write(str(play.hand_value()))
+                        break
                 turn_count += 1
                 rnd_turn += 1
                 if output_hands is not None:
@@ -108,11 +110,21 @@ class FiveCrowns:
             for play in players:
                 play.hand.append(self.deck.draw())
 
+    def card_to_string(self, card):
+        out_string = "('"
+        out_string += card[hand_graph.SUIT_IDX]
+        out_string += "', "
+        out_string += str(card[hand_graph.VAL_IDX])
+        out_string += ", "
+        out_string += str(card[hand_graph.DECK_IDX])
+        out_string += ") "
+        return out_string
+
 
 if __name__ == "__main__":
     player1 = RandAI.Player("Random")
     player2 = compete_ai.Player("Compete")
     player3 = reduce_ai.Player("Reduce")
     player4 = better_bogo.Player("Better Bogo")
-    FiveCrowns([player1, player2, player3, player4], test_deck=False, output_hands="hand_output")
+    FiveCrowns([player2], test_deck=False, output_hands="hand_output")
 

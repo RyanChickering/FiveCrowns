@@ -37,13 +37,21 @@ class Player(player.Player):
         # First, look for cards that aren't related to other cards
         for node in graph.nodes:
             # If a card has no edges and is not wild, it is useless
-            if len(node.edges) is 0 and not hand_graph.HandGraph.wild_check(node, game.round_num):
-                useless.append(node)
-            # Cards that are distantly related through a run are not useful if the run length is longer than
-            # the hand
-            for edge in node.edges:
-                if edge[hand_graph.COST_VAL] < game.round_num:
+            # If a card is wild, it is useful
+            if not hand_graph.HandGraph.wild_check(node, game.round_num):
+                if len(node.edges) is 0:
+                    useless.append(node)
                     break
+                # Cards that are distantly related through a run are not useful if the run length is longer than
+                # the hand. Cards that only have distant runs or wild relations are not useful
+                useful = False
+                for edge in node.edges:
+                    if edge[hand_graph.COST_VAL] < game.round_num and not \
+                            hand_graph.HandGraph.wild_check(edge[0], game.round_num):
+                        useful = True
+                        break
+                if not useful:
+                    useless.append(node)
         # Sort the useless cards and discard the highest
         if len(useless) > 0 and useless is not None:
             useless.sort(key=lambda crd: crd.name[hand_graph.VAL_IDX])
@@ -52,24 +60,26 @@ class Player(player.Player):
             # If useless cards were not found, get the best hand combination currently available
             needed = []
             best = self.identify_sets(needed, game)
+            # Checks for a path of only length 1
             solo_path = hand_graph.Node(('n', 0, 0))
             worst = 0
             worst_path = hand_graph.Path()
-            # Go through the paths in best and look for the one that currently costs the most points and get rid of
-            # cards from that.
+            # Go through the paths in best and look for the one that currently needs the most cards to go out
+            # and throw from that
             for path in best:
+                cards_needed = self.path_eval(path, game.round_num)
+                if cards_needed > worst:
+                    worst = cards_needed
+                    worst_path = path
                 if len(path.nodes) == 1:
                     if path.nodes[0].name[hand_graph.COST_VAL] > solo_path.name[hand_graph.COST_VAL]:
                         solo_path = path.nodes[0]
-                if self.path_eval(path, game.round_num) is not 0:
-                    value = path.evaluate(game.round_num)
-                    if value > worst:
-                        worst = value
-                        worst_path = path
-            worst_path.nodes.sort(key=lambda crd: crd.name[hand_graph.VAL_IDX])
+            worst_path.nodes.sort(key=lambda crd: crd.name[hand_graph.VAL_IDX], reverse=True)
             if len(worst_path.nodes) > 0:
-                if worst_path.nodes[0].name[hand_graph.VAL_IDX] > solo_path.name[hand_graph.COST_VAL]:
-                    return self.node_in_hand(worst_path.nodes.pop())
+                i = 0
+                while hand_graph.HandGraph.wild_check(worst_path.nodes[i], game.round_num):
+                    i += 1
+                return self.node_in_hand(worst_path.nodes.pop(i))
             if solo_path.name[hand_graph.COST_VAL] > 0:
                 return self.node_in_hand(solo_path)
             # If there were no non-0 cost paths and no paths of length 1, look for a path of length four that can
@@ -94,12 +104,15 @@ class Player(player.Player):
             lowest = 1000
             candidate = hand_graph.Path()
             for path in best:
-                value = path.evaluate(game.round_num, fits_hand=False)
+                value = path.evaluate(game.round_num, out=True, fits_hand=False)
                 if value < lowest:
                     lowest = value
                     candidate = path
-            candidate.nodes.sort(key=lambda crd: crd.name[hand_graph.VAL_IDX])
-            return self.node_in_hand(candidate.nodes.pop())
+            candidate.nodes.sort(key=lambda crd: crd.name[hand_graph.VAL_IDX], reverse=True)
+            i = 0
+            while i < len(candidate.nodes)-1 and not graph.wild_check(candidate.nodes[i], game.round_num, draw=True):
+                i += 1
+            return self.node_in_hand(candidate.nodes.pop(i))
 
     def node_in_hand(self, node):
         for card in self.hand:
@@ -109,18 +122,49 @@ class Player(player.Player):
 
     def identify_sets(self, needed, game):
         graph = hand_graph.HandGraph()
-        combos = graph.all_combo(self.hand, False)
+        if len(self.hand) > game.round_num:
+            combos = graph.all_combo(self.hand, True)
+        else:
+            combos = graph.all_combo(self.hand, False)
         # get all the possible hand combinations out, look for ones with high average path length
         # want to keep hand combinations with the fewest cards needed to go out on hand.
         best = []
         lowest = 1000
         for combo in combos:
             value = self.evaluate(combo)
+            # When using this function to create sets when we have an extra card, need extra conditions
+            if game.round_num < len(self.hand):
+                # Need to check that the combination created actually makes sense for the correct number of cards
+                value = self.evaluate(combo, drawn=True)
+                # If the value is 1, the hand can actually go out because the hand is holding an extra card
+                if value == 1:
+                    value = 0
+                # If the value is 0, need to make sure that it will actually work with one less card
+                elif value == 0:
+                    combo_copy = combo.copy()
+                    long = 0
+                    longest = combo_copy[0]
+                    for path in combo_copy:
+                        if len(path.nodes) > long:
+                            longest = path
+                    longest.nodes.pop(0)
+                    value = self.evaluate(combo_copy)
             if value < lowest:
                 lowest = value
                 best = combo
+
+        # Check all the paths to see if there are paths that need additional cards to go out
+        # If the number of cards not in sets is less than 3, do not need more pairs.
+        unmatched = 0
         for path in best:
-            if self.path_eval(path, game.round_num) != 0 and len(path.nodes) > 1:
+            if len(path.nodes) == 1:
+                unmatched += 1
+        for path in best:
+            # When to look at paths of length 1. Only look at paths of length 1 when there are enough cards outside
+            # of non length 1 paths to make another set and there are no sets that need additional cards
+            if len(path.nodes) > 1:
+                self.path_tracer(path, needed, game)
+            elif len(path.nodes) == 1 and unmatched >= 3:
                 self.path_tracer(path, needed, game)
         return best
 
@@ -140,6 +184,10 @@ class Player(player.Player):
                 for i in range(item-curr-1):
                     needed.append((suit, curr+i, 0))
                 curr = item
+            if run[0] > 3:
+                needed.append((suit, run[0]-1, 0))
+            if run[len(run)-1] < 13:
+                needed.append((suit, run[len(run)-1]+1, 0))
         elif path.type is hand_graph.SET:
             # look for any non wild members of the set and that is the card that you need
             for node in path.nodes:
@@ -156,28 +204,34 @@ class Player(player.Player):
                         needed.append((node.name[hand_graph.SUIT_IDX], node.name[hand_graph.VAL_IDX] + 1, 0))
             # if there were no wild cards, you just have a loose stack of wilds which seems unlikely
 
-
     # Returns how many cards are needed for a particular hand to go out
-    def evaluate(self, hand):
+    # You need a maximum number of cards in your hand - 1 to go out. Check how many cards are NOT in 3 length sets
+    # Check how many cards are NOT in 2 length sets
+    def evaluate(self, hand, drawn=False):
         wild = 0
         for path in hand:
             wild += len(path.nodes)
+        if drawn:
+            wild -= 1
         needed = 0
         for path in hand:
             needed += self.path_eval(path, wild)
         return needed
 
     def path_eval(self, path, wild):
-        needed  = 0
-        path.fix(wild)
         value = path.evaluate(wild)
-        if path.cost > 0:
-            needed += value
-        if value == 0:
-            needed += value
-        else:
+        if value is 0:
+            return 0
+        needed = 0
+        path.fix(wild)
+        if len(path.nodes) < 3 and (path.type is hand_graph.SET or path.type is hand_graph.NO_TYPE):
+            needed = min(len(path.nodes), abs(3 - len(path.nodes)))
+        # If it is a run, calculate how many cards you need to fix the run
+        elif value > 0 and path.type is hand_graph.RUN:
+            # What is the point of BASE?
             i = BASE
             t_path = path.copy()
+            # Checks how many cards are needed by adding jokers until the set can go out
             while t_path.evaluate(wild) != 0:
                 joker = hand_graph.Node(('J', 0, i))
                 t_path.add_node((joker, -1))
