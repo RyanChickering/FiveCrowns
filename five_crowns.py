@@ -40,46 +40,46 @@ Go out (automatically?) once all cards are put into sets.
 
 class FiveCrowns:
     # Players is a list of players
-    def __init__(self, players, test_deck=True, output_hands=None):
+    def __init__(self, players, test_deck=False, output_hands=None, output_scores=None, output_data=None, print_out=True):
         self.deck = deck.Deck()
         self.is_out = False
         turn_count = 0
         self.round_num = 0
         if test_deck:
             self.deck.test_deck()
-        if output_hands is not None:
-            output_hands = open(output_hands, "a")
+        if output_scores is not None:
+            output_scores = open(output_scores, "a")
+        if output_data is not None:
+            output_data = open(output_data, "a")
         # Meat and potatoes loop that goes through all the rounds,
         # deals cards, draws cards, discards cards.
-        for self.round_num in range(3, 14):
-            print("{0}'s round".format(self.round_num))
+        for self.round_num in range(3, 10):
+            if print_out:
+                print("{0}'s round".format(self.round_num))
             self.is_out = False
             self.deal(self.round_num, players, test_deck)
             self.discard_pile = [self.deck.draw()]
             rnd_turn = 0
+            first_deal = random.randint(0, len(players))
             while not self.is_out:
                 # Need the first person of each round to rotate as the deal rotates
                 j = 0
                 while j < len(players):
                     j += 1
-                    i = (self.round_num%len(players) + j) % len(players)
+                    i = (self.round_num%len(players) + j + first_deal) % len(players)
                     if self.deck.isEmpty():
                         self.deck = deck.Deck(random.shuffle(self.discard_pile))
                     players[i].draw(self)
                     self.discard_pile.append(players[i].discard(self))
                     if output_hands is not None:
-                        output_hands.write(players[i].hand_string())
-                        output_hands.write(" ")
-                        output_hands.write(self.card_to_string(self.discard_pile[len(self.discard_pile)-1]))
+                        players[i].write_hand()
                     if players[i].complete_hand():
                         self.is_out = True
                         if output_hands is not None:
-                            output_hands.write(str(players[i].hand_value()))
+                            players[i].write_hand()
                         break
                 turn_count += 1
                 rnd_turn += 1
-                if output_hands is not None:
-                    output_hands.write("\n")
             j = 0
             while j < len(players):
                 j += 1
@@ -91,18 +91,33 @@ class FiveCrowns:
                     self.discard_pile.append(players[i].discard(self))
                     players[i].score += players[i].hand_value()
                     if output_hands is not None:
-                        output_hands.write(players[i].hand_string())
-                        output_hands.write(" ")
-                        output_hands.write(str(players[i].hand_value()))
-                        output_hands.write("\n")
+                        players[i].write_hand()
             for play in players:
-                print(play.score, end="  ")
-            print("Turns: ", rnd_turn)
+                if print_out:
+                    print(play.score, end="  ")
+                if output_scores is not None:
+                    output_scores.write(str(play.score))
+                    output_scores.write(", ")
+            if print_out:
+                print("Turns: ", rnd_turn)
+            if output_scores is not None:
+                output_scores.write(str(rnd_turn))
+                output_scores.write("\n")
         for play in players:
-            print(play.name, " score:", play.score)
-        if output_hands is not None:
-            output_hands.close()
-        print("Average turns: ", turn_count/11)
+            if print_out:
+                print(play.name, " score:", play.score)
+            if output_data is not None:
+                output_data.write(str(play.score))
+                output_data.write(", ")
+        if output_data is not None:
+            output_data.write(str(first_deal))
+            output_data.write("\n")
+        if output_data is not None:
+            output_data.close()
+        if output_scores is not None:
+            output_scores.close()
+        if print_out:
+            print("Average turns: ", turn_count/11)
 
     def deal(self, round_num, players, test_deck=True):
         # Resets the hand for the player

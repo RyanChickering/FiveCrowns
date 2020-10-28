@@ -9,12 +9,15 @@ import hand_graph
 
 
 class Player:
-    def __init__(self, name):
+    def __init__(self, name, output=None):
         self.name = name
         self.CHAR_TO_INT = 49
         self.hand = []
         self.complete = False
         self.score = 0
+        self.output = output
+        if output is not None:
+            self.output = open(output, "a")
 
     def draw(self, game):
         raise NotImplementedError("Subclass must implement")
@@ -30,6 +33,11 @@ class Player:
         graph = hand_graph.HandGraph()
         self.complete = hand_graph.HandGraph.evaluate_hands(graph.all_combo(self.hand)) == 0
         return self.complete
+
+    def write_hand(self):
+        if self.output is not None:
+            self.output.write(self.hand_string())
+            self.output.write("\n")
 
     def hand_string(self):
         out_string = "["

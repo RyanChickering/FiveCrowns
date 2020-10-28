@@ -15,13 +15,16 @@ DECK_IDX = 2
 
 
 class Player(player.Player):
-    def __init__(self, name):
+    def __init__(self, name, output=None):
         self.name = name
         self.CHAR_TO_INT = 49
         self.hand = []
         self.complete = False
         self.score = 0
         self.pitch = None
+        self.output = output
+        if output is not None:
+            self.output = open(output, "a")
 
     def draw(self, game):
         self.pitch = None
