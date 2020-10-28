@@ -154,7 +154,7 @@ class HandGraph:
                     # Check for the same suit
                     elif node.name[SUIT_IDX] is check.name[SUIT_IDX] and not wild:
                         distance = abs(node.name[VAL_IDX] - check.name[VAL_IDX])-1
-                        if distance < len(hand)-2:
+                        if distance <= len(hand)-2:
                             node.edges.append((check, distance))
 
     # OUTDATED METHOD
@@ -393,7 +393,7 @@ class HandGraph:
 
 # Main method for testing different functions
 if __name__ == "__main__":
-    test_hand = [('s', 6, 0), ('d', 7, 1), ('d', 6, 1), ('r', 5, 0), ('s', 5, 0)]
+    test_hand = [('J', 0, 4), ('s', 11, 0), ('s', 13, 1)]
 
     # [('r', 6, 0), ('r', 5, 1), ('r', 7, 1), ('c', 11, 0), ('r', 11, 1), ('d', 8, 0), ('r', 8, 0), ('r', 10, 0), ('d', 9, 0), ('J', 0, 1), ('r', 10, 1)]
     graph = HandGraph()

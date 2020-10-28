@@ -51,42 +51,49 @@ class FiveCrowns:
             output_hands = open(output_hands, "a")
         # Meat and potatoes loop that goes through all the rounds,
         # deals cards, draws cards, discards cards.
-        for self.round_num in range(3, 10):
+        for self.round_num in range(3, 14):
             print("{0}'s round".format(self.round_num))
             self.is_out = False
             self.deal(self.round_num, players, test_deck)
             self.discard_pile = [self.deck.draw()]
             rnd_turn = 0
             while not self.is_out:
-                for play in players:
+                # Need the first person of each round to rotate as the deal rotates
+                j = 0
+                while j < len(players):
+                    j += 1
+                    i = (self.round_num%len(players) + j) % len(players)
                     if self.deck.isEmpty():
                         self.deck = deck.Deck(random.shuffle(self.discard_pile))
-                    play.draw(self)
-                    self.discard_pile.append(play.discard(self))
+                    players[i].draw(self)
+                    self.discard_pile.append(players[i].discard(self))
                     if output_hands is not None:
-                        output_hands.write(play.hand_string())
+                        output_hands.write(players[i].hand_string())
                         output_hands.write(" ")
                         output_hands.write(self.card_to_string(self.discard_pile[len(self.discard_pile)-1]))
-                    if play.complete_hand():
+                    if players[i].complete_hand():
                         self.is_out = True
                         if output_hands is not None:
-                            output_hands.write(str(play.hand_value()))
+                            output_hands.write(str(players[i].hand_value()))
                         break
                 turn_count += 1
                 rnd_turn += 1
                 if output_hands is not None:
                     output_hands.write("\n")
-            for play in players:
-                if not play.complete:
+            j = 0
+            while j < len(players):
+                j += 1
+                i = (self.round_num % len(players) + j) % len(players)
+                if not players[i].complete:
                     if self.deck.isEmpty():
                         self.deck = deck.Deck(random.shuffle(self.discard_pile))
-                    play.draw(self)
-                    self.discard_pile.append(play.discard(self))
-                    play.score += play.hand_value()
+                    players[i].draw(self)
+                    self.discard_pile.append(players[i].discard(self))
+                    players[i].score += players[i].hand_value()
                     if output_hands is not None:
-                        output_hands.write(play.hand_string())
+                        output_hands.write(players[i].hand_string())
                         output_hands.write(" ")
-                        output_hands.write(str(play.hand_value()))
+                        output_hands.write(str(players[i].hand_value()))
                         output_hands.write("\n")
             for play in players:
                 print(play.score, end="  ")
@@ -126,5 +133,5 @@ if __name__ == "__main__":
     player2 = compete_ai.Player("Compete")
     player3 = reduce_ai.Player("Reduce")
     player4 = better_bogo.Player("Better Bogo")
-    FiveCrowns([player2], test_deck=False, output_hands="hand_output")
+    FiveCrowns([player2, player3, player4], test_deck=False, output_hands="hand_output")
 

@@ -20,9 +20,7 @@ class Player(compete_ai.Player):
             self.hand.append(game.deck.draw())
         else:
             self.hand.append(game.discard_pile.pop())
-
-    # Discards a random card not in a complete set
-    def discard(self, game):
+        """
         graph = hand_graph.HandGraph()
         graph.find_edges(self.hand, drawn=True)
         useless = []
@@ -46,4 +44,4 @@ class Player(compete_ai.Player):
         worst_path.nodes.sort(key=lambda crd: crd.name[hand_graph.VAL_IDX])
         if len(worst_path.nodes) > 0:
             return self.node_in_hand(worst_path.nodes.pop())
-        return self.hand.pop(0)
+        return self.hand.pop(0)"""
