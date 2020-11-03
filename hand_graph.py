@@ -389,6 +389,7 @@ class HandGraph:
         for path in set_paths:
             curr_hand.append(path)
         # need to run through the conflicts in all possible orders.
+        """
         conflicts_perms = []
         for conflict in conflicts:
             self.factorial_sort(conflict, len(conflict), len(conflict), conflicts_perms)
@@ -396,6 +397,11 @@ class HandGraph:
         self.factorial_sort(conflicts_perms, len(conflicts_perms), len(conflicts_perms), permutations)
         # permutation is a list of conflicts. Within each permutation, need to make permutations of the
         # conflict interior
+        for permutation in permutations:
+            self.combine(combinations, curr_hand, permutation.pop(), permutation, self.nodes)
+        """
+        permutations = []
+        self.factorial_sort(conflicts, len(conflicts), len(conflicts), permutations)
         for permutation in permutations:
             self.combine(combinations, curr_hand, permutation.pop(), permutation, self.nodes)
         # need to add every possible combination of wild cards to every path
@@ -470,11 +476,13 @@ class HandGraph:
         # List of conflicts. Go through the list of conflicts and add them to the hand in different orders
         i = 0
         mod = len(conflict)
+        # for each conflict, runs through each
         while i < mod:
             j = i
             alt_hand = curr_hand.copy()
             alt_nodes = free_nodes.copy()
             alt_conflicts = conflicts.copy()
+            # I have no idea how this works
             for k in range(0, mod+1):
                 if j + i == mod:
                     to_add = self.remove_used(conflict[0][0], alt_nodes)
