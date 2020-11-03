@@ -12,13 +12,13 @@ class Path:
         output = ''
         for node in self.nodes:
             output += str(node.__str__())
-        output += " cost: " + str(self.cost)
+        """output += " cost: " + str(self.cost)
         if self.type is SET:
             output += " type: set"
         elif self.type is RUN:
             output += " type: run"
         else:
-            output += " type: no type"
+            output += " type: no type"""""
         return output
 
     def copy(self):
@@ -128,6 +128,11 @@ class HandGraph:
             new_card = Node(name=card)
             self.nodes.append(new_card)
 
+        wilds = []
+        for node in self.nodes:
+            if self.wild_check(node, len(hand), drawn):
+                wilds.append(node)
+
         # For each card, check what cards it can connect to
         for node in self.nodes:
             wild = False
@@ -154,7 +159,7 @@ class HandGraph:
                     # Check for the same suit
                     elif node.name[SUIT_IDX] is check.name[SUIT_IDX] and not wild:
                         distance = abs(node.name[VAL_IDX] - check.name[VAL_IDX])-1
-                        if distance <= len(hand)-2:
+                        if distance <= len(wilds):
                             node.edges.append((check, distance))
 
     # OUTDATED METHOD
@@ -208,61 +213,6 @@ class HandGraph:
                         unused_nodes = self.nodes
         # If every node was able to be used, the hand can go out.
         return True
-
-    # Generates the largest valid subgraph that it can for the node using the remaining nodes.
-    # Node indicates the card to start the path from. Free_nodes indicates the nodes available to use in the set.
-    # path indicates the currently progressing path. Allow_any indicates whether the path cost needs to be valid or not
-    def sub_graph(self, node, free_nodes, path=None, allow_any=False):
-        if path is None:
-            path = Path()
-        path.nodes.append(node)
-        neighbors = node.edges
-        possibles = []
-        wildcards = []
-        for edge in neighbors:
-            # Check if we have not yet used the neighbor
-            if free_nodes.__contains__(edge[NODE]):
-                # Check if the node is a wildcard. If it is, add it to wildcards
-                if edge[NODE].name[SUIT_IDX] is 'J' or edge[NODE].name[VAL_IDX] is len(self.hand):
-                    wildcards.append(edge)
-                # If the card is not wild, check if it is adjacent to the current node
-                # Makes sure the card isn't already in the path, needs a fix because five crowns decks are doubled
-                elif not path.nodes.__contains__(edge[NODE]):
-                    # If the path does not yet have a type, add all adjacent as possibles
-                    if path.type is NO_TYPE:
-                        possibles.append(edge)
-                    # If the type is set, only add edges with the correct edge cost
-                    elif path.type is SET:
-                        if edge[COST_VAL] < 0:
-                            possibles.append(edge)
-                    # If the type is run, only add edges with the correct edge cost
-                    elif path.type is RUN:
-                        if edge[COST_VAL] >= 0:
-                            possibles.append(edge)
-        possibles.sort(reverse=True, key=lambda edg: edg[COST_VAL])
-        # While there are neighbors, go to that and try to keep going
-        while len(possibles) > 0:
-            curr_edge = possibles.pop()
-            if curr_edge[COST_VAL] + path.cost < len(wildcards) or allow_any:
-                if path.type is NO_TYPE:
-                    if curr_edge[COST_VAL] < -1:
-                        path.type = SET
-                    elif curr_edge[COST_VAL] >= 0:
-                        path.type = RUN
-                elif path.type is SET:
-                    if not curr_edge[COST_VAL] < -1:
-                        break
-                elif path.type is RUN:
-                    if not curr_edge[COST_VAL] > 0:
-                        break
-                path.cost += curr_edge[COST_VAL]
-                new_path = self.sub_graph(curr_edge[NODE], free_nodes, path, allow_any=allow_any)
-                if len(new_path.nodes) > len(path.nodes):
-                    path = new_path
-        if len(path.nodes) < 3:
-            if len(path.nodes) + len(wildcards) >= 3:
-                path.add_node(wildcards.pop())
-        return path
 
     # Check whether the input card (a node) is wild
     @staticmethod
@@ -329,8 +279,16 @@ class HandGraph:
                         if neighbor[COST_VAL] <= -1:
                             new_neighbors.append(neighbor)
                     # Runs can have other run neighbors or wild cards added
+                    # don't want to add the same number to a run twice
                     elif path.type is RUN:
-                        if neighbor[COST_VAL] >= -1:
+                        new = True
+                        for node in new_neighbors:
+                            if node[VAL_IDX] == neighbor[NODE].name[VAL_IDX]:
+                                new = False
+                        for node in path.nodes:
+                            if node.name[VAL_IDX] == neighbor[NODE].name[VAL_IDX]:
+                                new = False
+                        if neighbor[COST_VAL] >= 0 and new:
                             new_neighbors.append(neighbor)
                     # If the path doesn't have a set yet, any neighbor can be added
                     else:
@@ -352,6 +310,240 @@ class HandGraph:
                                       curr_hand.copy(), combinations, path.copy(), draw)
 
         return combinations
+
+    # Create the largest set group and largest run group such that every card is used in their longest version of each
+    # of these. Having done this, chop up the different paths and put them together to create only the useful
+    # combinations and hopefully operate a lot faster than generating every combination
+    def better_combos(self, hand, draw=False):
+        combinations = []
+        self.find_edges(hand)
+        wilds = []
+        unused = []
+        for node in self.nodes:
+            if self.wild_check(node, len(self.nodes), draw=draw):
+                wilds.append(node)
+            else:
+                unused.append(node)
+        sets_free = unused.copy()
+        runs_free = unused
+        set_paths = []
+        run_paths = []
+        while len(sets_free) > 0:
+            set_paths.append(self.sub_graph(sets_free.pop(), sets_free, True))
+        while len(runs_free) > 0:
+            run_paths.append(self.sub_graph(runs_free.pop(), runs_free, False))
+        # Using all these max length paths, try to put them together in all the different ways that you can
+        # Build a list of overlapped nodes so we know where we need to split
+        # conflicts contains list of tuples containing pairs of conflicting paths and the conflicting node. Lists of
+        # conflicts contain one run path and however many conflicting set paths that it crosses
+        conflicts = []
+        removals = []
+        # One run can contain multiple set contributing cards
+        for r_path in run_paths:
+            overlap = []
+            for s_path in set_paths:
+                conflict = self.compare_paths(s_path, r_path)
+                if conflict is not None:
+                    remove = False
+                    # Remove run paths of length 1 if they are covered in a different path
+                    if len(r_path.nodes) == 1 and len(s_path.nodes) > 1:
+                        removals.append(r_path)
+                        remove = True
+                    if len(s_path.nodes) == 1:
+                        removals.append(s_path)
+                        remove = True
+                    if not remove:
+                        overlap.append((r_path, s_path, conflict))
+            if len(overlap) > 0:
+                conflicts.append(overlap)
+        # Remove length 1 paths
+        while len(removals) > 0:
+            curr = removals.pop()
+            if run_paths.__contains__(curr):
+                run_paths.remove(curr)
+            if set_paths.__contains__(curr):
+                set_paths.remove(curr)
+        for over in conflicts:
+            run_paths.remove(over[0][0])
+            for item in over:
+                if set_paths.__contains__(item[1]):
+                    set_paths.remove(item[1])
+        # if there were no conflicts, return the only reasonable combination of paths
+        if len(conflicts) == 0:
+            curr_hand = []
+            for path in set_paths:
+                curr_hand.append(path)
+            for path in run_paths:
+                curr_hand.append(path)
+            combinations.append(curr_hand)
+            return combinations
+        # if there were conflicts, return every combination of reasonable paths
+        # for every conflict, need to create two versions of the hand, one where the set gets the conflict and one
+        # where the run gets the conflict. Add all the paths without conflicts and then sort out the conflicts.
+        # create combinations where wildcards are doled out at the end
+        # Need to keep track of the free nodes, when adding in the conflict sets, delete nodes that aren't free out of
+        # the path.22
+        curr_hand = []
+        for path in run_paths:
+            curr_hand.append(path)
+        for path in set_paths:
+            curr_hand.append(path)
+        # need to run through the conflicts in all possible orders.
+        conflicts_perms = []
+        for conflict in conflicts:
+            self.factorial_sort(conflict, len(conflict), len(conflict), conflicts_perms)
+        permutations = []
+        self.factorial_sort(conflicts_perms, len(conflicts_perms), len(conflicts_perms), permutations)
+        # permutation is a list of conflicts. Within each permutation, need to make permutations of the
+        # conflict interior
+        for permutation in permutations:
+            self.combine(combinations, curr_hand, permutation.pop(), permutation, self.nodes)
+        # need to add every possible combination of wild cards to every path
+        # for path in combo in combinations,
+        if len(wilds) > 0:
+            wild_combinations = []
+            for combination in combinations:
+                self.wild_distribute(0, combination, wild_combinations, wilds.copy())
+            return wild_combinations
+        else:
+            return combinations
+
+    # creates new combinations where wildcards are added in all possible orders to paths in a combination
+    def wild_distribute(self, n, combination, combinations, wilds):
+        # if called and there are no wild cards remaining, append the current combination and end the exploration
+        if len(wilds) == 0:
+            combinations.append(combination)
+            return
+        # if we are on the last path in the combination and there are still wildcards left, need to add them all to that
+        # path and then add the combination to the total combinations
+        elif n == len(combination)-1:
+            path = combination.pop(n)
+            path = path.copy()
+            combination.insert(n, path)
+            for wild in wilds:
+                path.nodes.append(wild)
+            combinations.append(combination)
+            return
+        # start different combinations
+        elif n < len(combination)-1:
+            while len(wilds) > 0:
+                self.wild_distribute(n + 1, combination.copy(), combinations, wilds.copy())
+                path = combination.pop(n)
+                path = path.copy()
+                combination.insert(n, path)
+                path.nodes.append(wilds.pop())
+            combinations.append(combination)
+            return
+
+    # given a list, the size of the list, and the original size of the list, will output all the permutations to the
+    # permutations list provided
+    def factorial_sort(self, conflicts, size, n, permutations):
+        if size == 0:
+            permutations.append(conflicts.copy())
+            return
+
+        for i in range(size):
+            self.factorial_sort(conflicts, size - 1, n, permutations)
+            if size % 2 == 1:
+                temp = conflicts[0]
+                conflicts[0] = conflicts[size - 1]
+                conflicts[size - 1] = temp
+            else:
+                temp = conflicts[i]
+                conflicts[i] = conflicts[size - 1]
+                conflicts[size - 1] = temp
+
+    def factorial(self, num):
+        values = [1, 1, 2, 6, 24, 120]
+        if num > 5:
+            return num * self.factorial(num-1)
+        else:
+            return values[num]
+
+    # Combine the runs, sets, and conflicts into all combinations
+    # Conflict consists of a list of tuples, each which include the same run path and any set paths that it runs through
+    # need to make combinations saying what if we did all of the sets and the run in all different orders of priority
+    # for which paths get nodes first
+    def combine(self, combinations, curr_hand, conflict, conflicts, free_nodes):
+        # Take the passed in conflict and divide it into the two different hands that it can create and then
+        # generate all the downline hands for each of those
+        # List of conflicts. Go through the list of conflicts and add them to the hand in different orders
+        i = 0
+        mod = len(conflict)
+        while i < mod:
+            j = i
+            alt_hand = curr_hand.copy()
+            alt_nodes = free_nodes.copy()
+            alt_conflicts = conflicts.copy()
+            for k in range(0, mod+1):
+                if j + i == mod:
+                    to_add = self.remove_used(conflict[0][0], alt_nodes)
+                else:
+                    to_add = self.remove_used(conflict[j % mod][1], alt_nodes)
+                j += 1
+                if len(to_add.nodes) > 0:
+                    alt_hand.append(to_add)
+            if len(alt_conflicts) == 0:
+                combinations.append(alt_hand)
+                return
+            curr_conflict = alt_conflicts.pop()
+            self.combine(combinations, alt_hand.copy(), curr_conflict, alt_conflicts.copy(), alt_nodes.copy())
+            i += 1
+
+    # Method that removes nodes that have been used from a path and removes new nodes from the free_nodes
+    def remove_used(self, path, free_nodes):
+        new_path = path.copy()
+        # Go through the nodes in the path and remove the ones that have been used and mark ones that haven't been
+        # used as now used.
+        for node in path.nodes:
+            if not free_nodes.__contains__(node):
+                new_path.nodes.remove(node)
+            else:
+                free_nodes.remove(node)
+        return new_path
+
+    # method that returns the node shared by two paths if any
+    def compare_paths(self, path1, path2):
+        for node in path1.nodes:
+            if path2.nodes.__contains__(node):
+                return node
+        return None
+
+    # Generates the largest valid subgraph that it can for the node using the remaining nodes.
+    # Node indicates the card to start the path from. Free_nodes indicates the nodes available to use in the set.
+    # path indicates the currently progressing path. Allow_any indicates whether the path cost needs to be valid or not
+    # Have wild cards sucked up ahead of time and distributed after the paths are made
+    def sub_graph(self, node, free_nodes, sets, path=None):
+        if path is None:
+            path = Path()
+        path.nodes.append(node)
+        neighbors = node.edges
+        wildcards = []
+        for edge in neighbors:
+            # Check if we have not yet used the neighbor
+            if free_nodes.__contains__(edge[NODE]):
+                # Check if the node is a wildcard. If it is, add it to wildcards
+                if edge[NODE].name[SUIT_IDX] is 'J' or edge[NODE].name[VAL_IDX] is len(self.hand):
+                    wildcards.append(edge)
+                if sets:
+                    if edge[COST_VAL] == SET_VAL:
+                        path.type = SET
+                        path.add_node(edge)
+                        free_nodes.remove(edge[NODE])
+                else:
+                    # may need to check that the run doesn't already contain the same number
+                    new = True
+                    for node in path.nodes:
+                        if node.name[VAL_IDX] == edge[NODE].name[VAL_IDX]:
+                            new = False
+                    if edge[COST_VAL] >= 0 and new:
+                        path.type = RUN
+                        path.add_node(edge)
+                        free_nodes.remove(edge[NODE])
+                        for item in edge[NODE].edges:
+                            if item[COST_VAL] > -1:
+                                neighbors.append(item)
+        return path
 
     # Returns a score for a hand grouping.
     # A hand if a list of paths
@@ -393,8 +585,9 @@ class HandGraph:
 
 # Main method for testing different functions
 if __name__ == "__main__":
-    test_hand = [('J', 0, 4), ('s', 11, 0), ('s', 13, 1)]
-
+    test_hand = [('r', 6, 0), ('r', 5, 1), ('r', 7, 1), ('c', 9, 0), ('r', 8, 1), ('d', 8, 0), ('r', 8, 0), ('r', 10, 0), ('d', 9, 0), ('d', 9, 1), ('c', 10, 1)]
+    # r 10 r 10 r 8 r 8 d 8 d 9 c 9 d 9 r 6 r 7 r 5
+    # (r 5 r 6 r 7) (
     # [('r', 6, 0), ('r', 5, 1), ('r', 7, 1), ('c', 11, 0), ('r', 11, 1), ('d', 8, 0), ('r', 8, 0), ('r', 10, 0), ('d', 9, 0), ('J', 0, 1), ('r', 10, 1)]
     graph = HandGraph()
     """
@@ -405,21 +598,29 @@ if __name__ == "__main__":
     path.add_node((('r', 5, 1), -1))
     print(path.evaluate(3, out=True))
 
+    
+    numbers = [1, 2, 3, 4]
+    permutations = []
+    graph.factorial_sort(numbers, len(numbers), len(numbers), permutations)
+    for permutation in permutations:
+        print(permutation)
     """
-    all_combos = graph.all_combo(test_hand, False)
+
+    # all_combos = graph.all_combo(test_hand, False)
+    all_combos = graph.better_combos(test_hand, False)
     low = 1000
     high = 0
     i = 0
     for combo in all_combos:
         i += 1
-        for group in combo:
-            print(group, end=' ')
-        print()
         val = graph.evaluate_hand(combo)
         if val < low:
             low = val
         if val > high:
             high = val
+        for group in combo:
+            print(group, end=' ')
+        print(val)
     print("Number of combinations: ", len(all_combos))
     print("Highest scoring hand: ", high)
     print("Lowest scoring hand: ", low)
