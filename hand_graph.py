@@ -30,10 +30,9 @@ class Path:
 
     # Fixes runs to have the proper cost
     def fix(self, wild):
-        if self.type is RUN:
-            self.nodes.sort(reverse=False, key=lambda edg: edg.name[VAL_IDX])
-        else:
+        if self.type is not RUN:
             return
+        self.nodes.sort(reverse=False, key=lambda edg: edg.name[VAL_IDX])
         # Sets the start of the run
         curr = self.nodes[0].name[VAL_IDX] - 1
         j = 0
@@ -50,6 +49,7 @@ class Path:
             else:
                 self.cost += node.name[COST_VAL] - curr - 1
                 curr = node.name[VAL_IDX]
+        j = 3
 
     # Function used for ordering in the fix function
     def fix_func(self, node):
@@ -57,6 +57,8 @@ class Path:
 
     # Evaluates the number of points in an incomplete run. Out controls whether the game is out, as wild cards should
     # not be counted as points until the game is over
+    # If you have 3 cards in a run that go together and 1 that doesn't quite stretch yet, only count the one without
+    # the stretch
     def evaluate(self, wild, out=False, fits_hand=True):
         valid = True
         cost = 0
@@ -64,25 +66,73 @@ class Path:
             valid = False
         elif self.type is RUN:
             # fixes runs to have the correct cost
+            # go through the run, looking at each node. if you have 3 in a row that go together, do not count those
+            # against the hand. Save the longest stretch of run? Keep score, if you get three in a row, get rid of the
+            # score for the last three. If the next one is part of the run, don't add score. Could have disjoint runs
+            # of three in the same much larger run.
             self.fix(wild)
             if self.cost > 0:
                 valid = False
         # add up the points found in non-valid groupings
         valid = valid and fits_hand
         if not valid:
-            for node in self.nodes:
-                if node.name[VAL_IDX] == wild:
-                    if out:
-                        cost += 20
+            if self.type is RUN:
+                # want to identify runs of three in a row or more
+                # move through nodes, every time you hit a hole, make a new path using the nodes up until that point
+                # find how many wild cards you have. Then you know the distance that you can jump
+                wilds = []
+                unused = []
+                for node in self.nodes:
+                    if HandGraph.wild_check(node, wild, draw=False):
+                        wilds.append(node)
                     else:
-                        cost += 0
-                elif node.name[SUIT_IDX] == 'J':
-                    if out:
-                        cost += 50
+                        unused.append(node)
+                curr = unused[0]
+                prev_nodes = []
+                path = [curr.name[VAL_IDX]]
+                for j in range(1, len(unused)):
+                    if unused[j].name[VAL_IDX] > curr.name[VAL_IDX] + len(wilds) + 1:
+                        p_cost = 0
+                        if len(path) < 3:
+                            for cost in path:
+                                p_cost += cost
+                        prev_nodes.append([path, p_cost])
+                        path = []
+                    path.append(unused[j].name[VAL_IDX])
+                    curr = unused[j]
+                if len(path) > 0:
+                    p_cost = 0
+                    for cost in path:
+                        p_cost += cost
+                    prev_nodes.append([path, p_cost])
+                # sorts the sets by their total cost
+                prev_nodes.sort(key=lambda i_path: i_path[1])
+                cost = 0
+                for i_path in prev_nodes:
+                    if len(i_path[0]) + len(wilds) > 3:
+                        j = 0
+                        while len(i_path) + j > 3:
+                            j += 1
+                            wilds.pop()
+                        i_path[1] = 0
+                    if len(wilds) == 0:
+                        break
+                for i_path in prev_nodes:
+                    cost += i_path[1]
+            else:
+                for node in self.nodes:
+                    if node.name[VAL_IDX] == wild:
+                        if out:
+                            cost += 20
+                        else:
+                            cost += 0
+                    elif node.name[SUIT_IDX] == 'J':
+                        if out:
+                            cost += 50
+                        else:
+                            cost += 0
                     else:
-                        cost += 0
-                else:
-                    cost += node.name[VAL_IDX]
+                        cost += node.name[VAL_IDX]
         return cost
 
 
@@ -159,7 +209,7 @@ class HandGraph:
                     # Check for the same suit
                     elif node.name[SUIT_IDX] is check.name[SUIT_IDX] and not wild:
                         distance = abs(node.name[VAL_IDX] - check.name[VAL_IDX])-1
-                        if distance <= len(wilds):
+                        if distance > -1:
                             node.edges.append((check, distance))
 
     # OUTDATED METHOD
@@ -336,11 +386,12 @@ class HandGraph:
         # Build a list of overlapped nodes so we know where we need to split
         # conflicts contains list of tuples containing pairs of conflicting paths and the conflicting node. Lists of
         # conflicts contain one run path and however many conflicting set paths that it crosses
+        # conflicts are nodes that have a name and a list of other conflicts that they are in conflict with
         conflicts = []
         removals = []
         # One run can contain multiple set contributing cards
         for r_path in run_paths:
-            overlap = []
+            overlap = None
             for s_path in set_paths:
                 conflict = self.compare_paths(s_path, r_path)
                 if conflict is not None:
@@ -353,9 +404,23 @@ class HandGraph:
                         removals.append(s_path)
                         remove = True
                     if not remove:
-                        overlap.append((r_path, s_path, conflict))
-            if len(overlap) > 0:
-                conflicts.append(overlap)
+                        r_new = True
+                        s_new = True
+                        for conflict in conflicts:
+                            if conflict.name is r_path:
+                                conflict.edges.append(s_path)
+                                r_new = False
+                            if conflict.name is s_path:
+                                conflict.edges.append(r_path)
+                                s_new = False
+                        if r_new:
+                            overlap = Node(name=r_path)
+                            overlap.edges.append(s_path)
+                            conflicts.append(overlap)
+                        if s_new:
+                            overlap = Node(name=s_path)
+                            overlap.edges.append(r_path)
+                            conflicts.append(overlap)
         # Remove length 1 paths
         while len(removals) > 0:
             curr = removals.pop()
@@ -363,11 +428,13 @@ class HandGraph:
                 run_paths.remove(curr)
             if set_paths.__contains__(curr):
                 set_paths.remove(curr)
+        # Removes paths that had conflicts from the list of paths
         for over in conflicts:
-            run_paths.remove(over[0][0])
-            for item in over:
-                if set_paths.__contains__(item[1]):
-                    set_paths.remove(item[1])
+            if run_paths.__contains__(over.name):
+                run_paths.remove(over.name)
+            for item in over.edges:
+                if set_paths.__contains__(item):
+                    set_paths.remove(item)
         # if there were no conflicts, return the only reasonable combination of paths
         if len(conflicts) == 0:
             curr_hand = []
@@ -382,30 +449,32 @@ class HandGraph:
         # where the run gets the conflict. Add all the paths without conflicts and then sort out the conflicts.
         # create combinations where wildcards are doled out at the end
         # Need to keep track of the free nodes, when adding in the conflict sets, delete nodes that aren't free out of
-        # the path.22
+        # the path.
         curr_hand = []
         for path in run_paths:
             curr_hand.append(path)
         for path in set_paths:
             curr_hand.append(path)
         # need to run through the conflicts in all possible orders.
-        """
-        conflicts_perms = []
+        # splits the conflicts into two different lists, one for conflicts with two or more connected to it and one
+        # for conflicts with only one related conflict
+        multi = []
+        singles = []
         for conflict in conflicts:
-            self.factorial_sort(conflict, len(conflict), len(conflict), conflicts_perms)
+            if len(conflict.edges) >= 2:
+                multi.append(conflict)
+            else:
+                singles.append(conflict)
+        # create all the permutations of the list of conflicts
         permutations = []
-        self.factorial_sort(conflicts_perms, len(conflicts_perms), len(conflicts_perms), permutations)
-        # permutation is a list of conflicts. Within each permutation, need to make permutations of the
-        # conflict interior
-        for permutation in permutations:
-            self.combine(combinations, curr_hand, permutation.pop(), permutation, self.nodes)
-        """
-        permutations = []
-        self.factorial_sort(conflicts, len(conflicts), len(conflicts), permutations)
-        for permutation in permutations:
-            self.combine(combinations, curr_hand, permutation.pop(), permutation, self.nodes)
-        # need to add every possible combination of wild cards to every path
-        # for path in combo in combinations,
+        self.factorial_sort(multi, len(multi), len(multi), permutations)
+        # Adds the single conflict conflicts into the different permutations which creates all the ones that we want
+        permutations = self.add_singles(singles, permutations)
+
+        # processes the conflicts such that every node is only used once in each combination
+        combinations = self.combine(permutations)
+
+        # creates the different combinations allowed by available wildcards
         if len(wilds) > 0:
             wild_combinations = []
             for combination in combinations:
@@ -413,6 +482,25 @@ class HandGraph:
             return wild_combinations
         else:
             return combinations
+
+    def add_singles(self, singles, permutations):
+        for single in singles:
+            new_perms = []
+            for permutation in permutations:
+                # find the conflict and create two new permutations and add them to the new_permutations list
+                # When the conflict is found, copy the current permutation and make a version where the single is
+                # processed before it's conflict and one where it is processed after its conflict
+                for conflict in permutation:
+                    con = self.compare_paths(conflict.name, single.name)
+                    if con is not None:
+                        alt_perm = permutation.copy()
+                        alt_perm.insert(0, single)
+                        permutation.append(single)
+                        new_perms.append(alt_perm)
+                        new_perms.append(permutation)
+                        break
+            permutations = new_perms.copy()
+        return permutations
 
     # creates new combinations where wildcards are added in all possible orders to paths in a combination
     def wild_distribute(self, n, combination, combinations, wilds):
@@ -466,37 +554,25 @@ class HandGraph:
         else:
             return values[num]
 
-    # Combine the runs, sets, and conflicts into all combinations
-    # Conflict consists of a list of tuples, each which include the same run path and any set paths that it runs through
-    # need to make combinations saying what if we did all of the sets and the run in all different orders of priority
-    # for which paths get nodes first
-    def combine(self, combinations, curr_hand, conflict, conflicts, free_nodes):
-        # Take the passed in conflict and divide it into the two different hands that it can create and then
-        # generate all the downline hands for each of those
-        # List of conflicts. Go through the list of conflicts and add them to the hand in different orders
-        i = 0
-        mod = len(conflict)
-        # for each conflict, runs through each
-        while i < mod:
-            j = i
-            alt_hand = curr_hand.copy()
-            alt_nodes = free_nodes.copy()
-            alt_conflicts = conflicts.copy()
-            # I have no idea how this works
-            for k in range(0, mod+1):
-                if j + i == mod:
-                    to_add = self.remove_used(conflict[0][0], alt_nodes)
-                else:
-                    to_add = self.remove_used(conflict[j % mod][1], alt_nodes)
-                j += 1
-                if len(to_add.nodes) > 0:
-                    alt_hand.append(to_add)
-            if len(alt_conflicts) == 0:
-                combinations.append(alt_hand)
-                return
-            curr_conflict = alt_conflicts.pop()
-            self.combine(combinations, alt_hand.copy(), curr_conflict, alt_conflicts.copy(), alt_nodes.copy())
-            i += 1
+    # Takes the permuatations of the orders of conflicts, and resolves them by only using unused nodes from each
+    # path
+    def combine(self, permutations):
+        combinations = []
+        for permutation in permutations:
+            used_nodes = []
+            combination = []
+            for conflict in permutation:
+                temp = conflict.name.copy()
+                for node in conflict.name.nodes:
+                    if used_nodes.__contains__(node):
+                        temp.nodes.remove(node)
+                    else:
+                        used_nodes.append(node)
+                if len(temp.nodes) > 0:
+                    combination.append(temp)
+            combinations.append(combination)
+        return combinations
+
 
     # Method that removes nodes that have been used from a path and removes new nodes from the free_nodes
     def remove_used(self, path, free_nodes):
@@ -593,7 +669,7 @@ class HandGraph:
 
 # Main method for testing different functions
 if __name__ == "__main__":
-    test_hand = [('r', 6, 0), ('r', 5, 1), ('r', 7, 1), ('c', 9, 0), ('r', 8, 1), ('d', 8, 0), ('r', 8, 0), ('r', 10, 0), ('d', 9, 0), ('d', 9, 1), ('c', 10, 1)]
+    test_hand = [('r', 6, 0), ('r', 5, 1), ('r', 7, 1), ('c', 9, 0), ('r', 8, 1), ('d', 8, 0), ('r', 8, 0), ('r', 10, 0), ('d', 9, 0), ('d', 9, 1), ('r', 11, 1)]
     # r 10 r 10 r 8 r 8 d 8 d 9 c 9 d 9 r 6 r 7 r 5
     # (r 5 r 6 r 7) (
     # [('r', 6, 0), ('r', 5, 1), ('r', 7, 1), ('c', 11, 0), ('r', 11, 1), ('d', 8, 0), ('r', 8, 0), ('r', 10, 0), ('d', 9, 0), ('J', 0, 1), ('r', 10, 1)]
