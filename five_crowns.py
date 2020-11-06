@@ -53,7 +53,7 @@ class FiveCrowns:
             output_data = open(output_data, "a")
         # Meat and potatoes loop that goes through all the rounds,
         # deals cards, draws cards, discards cards.
-        for self.round_num in range(3, 10):
+        for self.round_num in range(3, 14):
             if print_out:
                 print("{0}'s round".format(self.round_num))
             self.is_out = False
@@ -148,5 +148,5 @@ if __name__ == "__main__":
     player2 = compete_ai.Player("Compete")
     player3 = reduce_ai.Player("Reduce")
     player4 = better_bogo.Player("Better Bogo")
-    FiveCrowns([player2, player3, player4], test_deck=False, output_hands="hand_output")
+    FiveCrowns([player2, player4], test_deck=False, output_hands="hand_output")
 

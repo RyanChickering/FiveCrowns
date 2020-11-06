@@ -49,7 +49,6 @@ class Path:
             else:
                 self.cost += node.name[COST_VAL] - curr - 1
                 curr = node.name[VAL_IDX]
-        j = 3
 
     # Function used for ordering in the fix function
     def fix_func(self, node):
@@ -90,35 +89,58 @@ class Path:
                 curr = unused[0]
                 prev_nodes = []
                 path = [curr.name[VAL_IDX]]
+                # separates the run into smaller paths.
+                wild_count = len(wilds)
+                prev_node = 0
+                valid = True
+                p_cost = 0
                 for j in range(1, len(unused)):
-                    if unused[j].name[VAL_IDX] > curr.name[VAL_IDX] + len(wilds) + 1:
-                        p_cost = 0
-                        if len(path) < 3:
-                            for cost in path:
-                                p_cost += cost
+                    # if in the range allowed by the wildcards
+                    if unused[j].name[VAL_IDX] <= curr.name[VAL_IDX] + wild_count + 1:
+                        # decrease wild value by the number of skipped cards
+                        if (unused[j].name[VAL_IDX] - curr.name[VAL_IDX] + 1) > 0:
+                            prev_node = j
+                        wild_count -= unused[j].name[VAL_IDX] - curr.name[VAL_IDX] + 1
+                        # if we need a wild card, these cards are not safe
+                        if wild_count != len(wilds):
+                            valid = False
+                        p_cost += curr.name[VAL_IDX]
+                    else:
+                        p_cost += curr.name[VAL_IDX]
+                        if valid and len(path) > 3:
+                            p_cost = 0
+                        valid = True
                         prev_nodes.append([path, p_cost])
+                        p_cost = 0
+                        wild_count = len(wilds)
+                        if j > prev_node + 1:
+                            j = prev_node
                         path = []
+
                     path.append(unused[j].name[VAL_IDX])
                     curr = unused[j]
                 if len(path) > 0:
-                    p_cost = 0
-                    for cost in path:
-                        p_cost += cost
+                    if valid and len(path) > 3:
+                        p_cost = 0
+                    else:
+                        p_cost += unused[len(unused)-1].name[VAL_IDX]
                     prev_nodes.append([path, p_cost])
                 # sorts the sets by their total cost
-                prev_nodes.sort(key=lambda i_path: i_path[1])
+                prev_nodes.sort(reverse=True, key=lambda i_path: i_path[1])
                 cost = 0
+                # looks at the highest cost run that can be fixed and counts the nodes that weren't used in that run
+                to_count = unused.copy()
                 for i_path in prev_nodes:
-                    if len(i_path[0]) + len(wilds) > 3:
-                        j = 0
-                        while len(i_path) + j > 3:
-                            j += 1
-                            wilds.pop()
-                        i_path[1] = 0
-                    if len(wilds) == 0:
+                    if len(i_path[0]) + len(wilds) >= 3:
+                        for val_idx in i_path[0]:
+                            for node in unused:
+                                if val_idx == node.name[VAL_IDX]:
+                                    if to_count.__contains__(node):
+                                        to_count.remove(node)
+                                        break
                         break
-                for i_path in prev_nodes:
-                    cost += i_path[1]
+                for node in to_count:
+                    cost += node.name[VAL_IDX]
             else:
                 for node in self.nodes:
                     if node.name[VAL_IDX] == wild:
@@ -209,7 +231,7 @@ class HandGraph:
                     # Check for the same suit
                     elif node.name[SUIT_IDX] is check.name[SUIT_IDX] and not wild:
                         distance = abs(node.name[VAL_IDX] - check.name[VAL_IDX])-1
-                        if distance > -1:
+                        if (distance < len(hand) and not drawn) or (distance < len(hand) - 1 and drawn):
                             node.edges.append((check, distance))
 
     # OUTDATED METHOD
@@ -277,7 +299,8 @@ class HandGraph:
             return False
 
     # Creates every possible combination of cards possible for a hand
-    def all_combo(self, hand, draw=False):
+    # No longer used and has minor bugs where it misses combinations
+    def comprehensive_combo(self, hand, draw=False):
         self.find_edges(hand, drawn=draw)
         unused_nodes = []
         # Semi-sorts the nodes so that all cards are looked at before the wild cards.
@@ -364,7 +387,7 @@ class HandGraph:
     # Create the largest set group and largest run group such that every card is used in their longest version of each
     # of these. Having done this, chop up the different paths and put them together to create only the useful
     # combinations and hopefully operate a lot faster than generating every combination
-    def better_combos(self, hand, draw=False):
+    def all_combo(self, hand, draw=False):
         combinations = []
         self.find_edges(hand)
         wilds = []
@@ -443,6 +466,10 @@ class HandGraph:
             for path in run_paths:
                 curr_hand.append(path)
             combinations.append(curr_hand)
+            if len(wilds) > 0:
+                wild_combination = []
+                self.wild_distribute(0, combinations[0], wild_combination, wilds.copy())
+                return wild_combination
             return combinations
         # if there were conflicts, return every combination of reasonable paths
         # for every conflict, need to create two versions of the hand, one where the set gets the conflict and one
@@ -465,14 +492,38 @@ class HandGraph:
                 multi.append(conflict)
             else:
                 singles.append(conflict)
+        # If a conflict is connected to a single conflict which is also then only connected to the original conflict,
+        # only want one instance of that conflict in singles
+        # Singles who are only connected to a single, need to be added in before the single checking stage
+        c_singles = []
+        u_singles = []
+        for single in singles:
+            unique = True
+            for single2 in u_singles:
+                if self.compare_paths(single.name, single2.edges[0]) is not None:
+                    unique = False
+                    break
+            if unique:
+                u_singles.append(single)
+
         # create all the permutations of the list of conflicts
         permutations = []
         self.factorial_sort(multi, len(multi), len(multi), permutations)
+        if len(u_singles) > 0:
+            for permutation in permutations:
+                for single in u_singles:
+                    permutation.append(single)
         # Adds the single conflict conflicts into the different permutations which creates all the ones that we want
         permutations = self.add_singles(singles, permutations)
 
         # processes the conflicts such that every node is only used once in each combination
         combinations = self.combine(permutations)
+        if len(run_paths) > 0 or len(set_paths) > 0:
+            for combin in combinations:
+                for run_path in run_paths:
+                    combin.append(run_path)
+                for set_path in set_paths:
+                    combin.append(set_path)
 
         # creates the different combinations allowed by available wildcards
         if len(wilds) > 0:
@@ -669,7 +720,7 @@ class HandGraph:
 
 # Main method for testing different functions
 if __name__ == "__main__":
-    test_hand = [('r', 6, 0), ('r', 5, 1), ('r', 7, 1), ('c', 9, 0), ('r', 8, 1), ('d', 8, 0), ('r', 8, 0), ('r', 10, 0), ('d', 9, 0), ('d', 9, 1), ('r', 11, 1)]
+    test_hand = [('J', 0, 2), ('r', 9, 0), ('h', 6, 0), ('d', 8, 1), ('s', 8, 0), ('d', 10, 1), ('h', 13, 1), ('r', 3, 0), ('r', 13, 0)]
     # r 10 r 10 r 8 r 8 d 8 d 9 c 9 d 9 r 6 r 7 r 5
     # (r 5 r 6 r 7) (
     # [('r', 6, 0), ('r', 5, 1), ('r', 7, 1), ('c', 11, 0), ('r', 11, 1), ('d', 8, 0), ('r', 8, 0), ('r', 10, 0), ('d', 9, 0), ('J', 0, 1), ('r', 10, 1)]
@@ -690,14 +741,14 @@ if __name__ == "__main__":
         print(permutation)
     """
 
-    # all_combos = graph.all_combo(test_hand, False)
-    all_combos = graph.better_combos(test_hand, False)
+    all_combos = graph.all_combo(test_hand, False)
+    # all_combos = graph.comprehensive_combo(test_hand, False)
     low = 1000
     high = 0
     i = 0
     for combo in all_combos:
         i += 1
-        val = graph.evaluate_hand(combo)
+        val = graph.evaluate_hand(combo, out=False)
         if val < low:
             low = val
         if val > high:
