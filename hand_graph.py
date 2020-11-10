@@ -720,7 +720,7 @@ class HandGraph:
 
 # Main method for testing different functions
 if __name__ == "__main__":
-    test_hand = [('J', 0, 2), ('r', 9, 0), ('h', 6, 0), ('d', 8, 1), ('s', 8, 0), ('d', 10, 1), ('h', 13, 1), ('r', 3, 0), ('r', 13, 0)]
+    test_hand = [('s', 11, 0), ('d', 10, 0), ('s', 3, 0)]
     # r 10 r 10 r 8 r 8 d 8 d 9 c 9 d 9 r 6 r 7 r 5
     # (r 5 r 6 r 7) (
     # [('r', 6, 0), ('r', 5, 1), ('r', 7, 1), ('c', 11, 0), ('r', 11, 1), ('d', 8, 0), ('r', 8, 0), ('r', 10, 0), ('d', 9, 0), ('J', 0, 1), ('r', 10, 1)]
@@ -748,7 +748,7 @@ if __name__ == "__main__":
     i = 0
     for combo in all_combos:
         i += 1
-        val = graph.evaluate_hand(combo, out=False)
+        val = graph.evaluate_hand(combo, out=True)
         if val < low:
             low = val
         if val > high:
